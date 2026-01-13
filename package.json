@@ -4,9 +4,21 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon --env-file=.env.staging index.js",
+    "dev:staging": "nodemon --env-file=.env.staging index.js",
+    "dev:production": "nodemon --env-file=.env.production index.js",
+    "start": "node --env-file=.env.production index.js",
+    "start:staging": "node --env-file=.env.staging index.js"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
 }
