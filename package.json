@@ -11,7 +11,9 @@
     "start": "node --env-file=.env.production src/index.js",
     "start:staging": "node --env-file=.env.staging src/index.js",
     "seed:sysadmin": "node --env-file=.env.staging Seeders/sysadmin.js",
-    "seed:sysadmin:prod": "node --env-file=.env.production Seeders/sysadmin.js"
+    "seed:sysadmin:prod": "node --env-file=.env.production Seeders/sysadmin.js",
+    "import:students": "node --env-file=.env.staging Seeders/importStudents.js",
+    "import:students:prod": "node --env-file=.env.production Seeders/importStudents.js"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +25,7 @@
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-validator": "^7.3.1",

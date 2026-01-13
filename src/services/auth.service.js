@@ -1,7 +1,8 @@
-import { findUserByEmail } from "../dal/user.dal.js";
+import { findUserByEmail, findUserById } from "../dal/user.dal.js";
 import { findSysAdminByUserId } from "../dal/sysAdmin.dal.js";
 import { findDistrictHeadByUserId } from "../dal/districtHead.dal.js";
 import { findTeacherByUserId } from "../dal/teacher.dal.js";
+import { findStudentByUserId } from "../dal/student.dal.js";
 import { comparePassword, sanitizeUser } from "../utils/helpers.js";
 import { generateToken } from "../utils/jwt.js";
 
@@ -34,7 +35,7 @@ export const loginUser = async (email, password) => {
       profile = await findTeacherByUserId(user._id);
       break;
     case "Student":
-      // TODO: Implement when student DAL is ready
+      profile = await findStudentByUserId(user._id);
       break;
     default:
       break;
@@ -79,7 +80,7 @@ export const getCurrentUser = async (userId, role) => {
       profile = await findTeacherByUserId(userId);
       break;
     case "Student":
-      // TODO: Implement when student DAL is ready
+      profile = await findStudentByUserId(userId);
       break;
     default:
       break;
