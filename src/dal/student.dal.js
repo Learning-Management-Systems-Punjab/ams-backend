@@ -354,3 +354,6 @@ export const isRollNumberExists = async (
   const count = await Student.countDocuments(query);
   return count > 0;
 };
+
+// Alias for backward compatibility
+export const findStudentsBySection = findStudentsBySectionId;

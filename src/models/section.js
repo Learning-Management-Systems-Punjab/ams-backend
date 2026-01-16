@@ -32,11 +32,11 @@ const sectionSchema = new mongoose.Schema(
     rollNumberRange: {
       start: {
         type: Number,
-        required: true,
+        required: false, // Optional - will be set when proper sections are created
       },
       end: {
         type: Number,
-        required: true,
+        required: false, // Optional - will be set when proper sections are created
       },
     },
     subjects: [

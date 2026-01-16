@@ -18,8 +18,13 @@ import {
   isRollNumberExists,
 } from "../dal/student.dal.js";
 import { findCollegeById } from "../dal/college.dal.js";
-import { findProgramById } from "../dal/program.dal.js";
-import { findSectionById } from "../dal/section.dal.js";
+import {
+  findProgramById,
+  findProgramByName,
+  createProgram,
+} from "../dal/program.dal.js";
+import { findSectionById, createSection } from "../dal/section.dal.js";
+import { findSubjectByName, createSubject } from "../dal/subject.dal.js";
 import { createUser, findUserByEmail } from "../dal/user.dal.js";
 import { hashPassword, generateRandomString } from "../utils/helpers.js";
 
@@ -538,4 +543,488 @@ export const exportStudentsService = async (collegeId, filters = {}) => {
   }));
 
   return csvData;
+};
+
+/**
+ * Parse program name from CSV format
+ * Example: "F.Sc. (Pre-Engineering)-Mathematics, Chemistry, Physics"
+ * Returns: { name: "F.Sc. (Pre-Engineering)", code: "FSC-PE", subjects: ["Mathematics", "Chemistry", "Physics"] }
+ */
+const parseProgramFromCSV = (programString) => {
+  // Split by hyphen to separate program name from subjects
+  const parts = programString.split("-");
+  const programName = parts[0].trim();
+  const subjectsString = parts.slice(1).join("-").trim();
+
+  // Extract subjects
+  const subjects = subjectsString
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s);
+
+  // Generate code from program name
+  // "F.Sc. (Pre-Engineering)" -> "FSC-PE"
+  let code = programName
+    .replace(/[()]/g, "")
+    .split(/[\s.]+/)
+    .filter((word) => word && word.length > 1)
+    .map((word) => word.substring(0, 2).toUpperCase())
+    .join("-");
+
+  return {
+    name: programName,
+    code: code,
+    subjects: subjects,
+  };
+};
+
+/**
+ * Find or create program
+ * @param {String} collegeId
+ * @param {String} programString - Raw program string from CSV
+ * @returns {Promise<Object>} - Returns { program, wasCreated }
+ */
+const findOrCreateProgram = async (collegeId, programString) => {
+  const parsed = parseProgramFromCSV(programString);
+
+  // Try to find existing program by name (case-insensitive)
+  let program = await findProgramByName(collegeId, parsed.name);
+
+  if (program) {
+    // Found existing program
+    return { program, wasCreated: false };
+  }
+
+  // Program doesn't exist, create new one
+  program = await createProgram({
+    name: parsed.name,
+    code: parsed.code,
+    collegeId: collegeId,
+    description: `${parsed.name} - ${parsed.subjects.join(", ")}`,
+    duration: 2, // Default to 2 years for F.Sc
+    subjects: [], // We'll handle subject creation later
+  });
+
+  return { program, wasCreated: true };
+};
+
+/**
+ * Generate subject code from subject name
+ * Example: "Mathematics" -> "MATH", "Chemistry" -> "CHEM"
+ */
+const generateSubjectCode = (subjectName) => {
+  return subjectName
+    .replace(/[^a-zA-Z\s]/g, "")
+    .split(/\s+/)
+    .filter((word) => word && word.length > 0)
+    .map((word) => word.substring(0, 4).toUpperCase())
+    .join("-");
+};
+
+/**
+ * Find or create subject
+ * @param {String} collegeId
+ * @param {String} subjectName - Subject name from CSV
+ * @param {Map} subjectCache - Cache to avoid repeated queries
+ * @param {Object} results - Results object to track created/found subjects
+ * @param {Set} createdSubjectIds - Set to track unique created subject IDs
+ * @returns {Promise<Object>} - Returns { subject, wasCreated }
+ */
+const findOrCreateSubject = async (
+  collegeId,
+  subjectName,
+  subjectCache,
+  results,
+  createdSubjectIds
+) => {
+  // Check cache first
+  if (subjectCache.has(subjectName)) {
+    return { subject: subjectCache.get(subjectName), wasCreated: false };
+  }
+
+  // Try to find existing subject by name (case-insensitive)
+  let subject = await findSubjectByName(collegeId, subjectName);
+
+  if (subject) {
+    // Found existing subject
+    subjectCache.set(subjectName, subject);
+
+    // Track in results (only once per unique subject)
+    if (
+      !results.subjectsFound.find(
+        (s) => s._id.toString() === subject._id.toString()
+      )
+    ) {
+      results.subjectsFound.push({
+        _id: subject._id,
+        name: subject.name,
+        code: subject.code,
+      });
+    }
+
+    return { subject, wasCreated: false };
+  }
+
+  // Subject doesn't exist, create new one
+  const code = generateSubjectCode(subjectName);
+
+  subject = await createSubject({
+    name: subjectName,
+    code: code,
+    collegeId: collegeId,
+    description: `${subjectName}`,
+  });
+
+  subjectCache.set(subjectName, subject);
+
+  // Track in results (only once per unique subject)
+  if (!createdSubjectIds.has(subject._id.toString())) {
+    createdSubjectIds.add(subject._id.toString());
+    results.subjectsCreated.push({
+      _id: subject._id,
+      name: subject.name,
+      code: subject.code,
+    });
+  }
+
+  return { subject, wasCreated: true };
+};
+
+/**
+ * Find or create default section for a program
+ * Since we don't have section details in CSV, create a default placeholder section
+ * Later, proper sections will be created based on roll number ranges
+ * @param {String} collegeId
+ * @param {String} programId
+ * @param {String} year - e.g., "1st Year"
+ * @param {String} shiftInfo - e.g., "1st Shift - Mathematics, Chemistry, Physics"
+ * @param {Map} subjectCache - Cache to avoid repeated subject queries
+ * @param {Object} results - Results object to track created/found subjects
+ * @param {Set} createdSubjectIds - Set to track unique created subject IDs
+ * @returns {Promise<Object>} - Returns { section, wasCreated }
+ */
+const findOrCreateDefaultSection = async (
+  collegeId,
+  programId,
+  year,
+  shiftInfo,
+  subjectCache,
+  results,
+  createdSubjectIds
+) => {
+  // Parse shift from shiftInfo
+  const shiftMatch = shiftInfo.match(/(\d+(?:st|nd|rd|th)\s+Shift)/i);
+  const shift = shiftMatch ? shiftMatch[1] : "1st Shift";
+
+  // Parse subject combination from shiftInfo
+  // "1st Shift - Mathematics, Chemistry, Physics" -> ["Mathematics", "Chemistry", "Physics"]
+  const subjectsPart = shiftInfo.split("-").slice(1).join("-").trim();
+  const subjectNames = subjectsPart
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s);
+
+  // Try to find existing section with same program, year, shift, and subject combination
+  const Section = (await import("../models/section.js")).default;
+  let section = await Section.findOne({
+    collegeId,
+    programId,
+    year,
+    shift,
+    isActive: true,
+  }).lean();
+
+  if (section) {
+    // Found existing section
+    return { section, wasCreated: false };
+  }
+
+  // Section doesn't exist, create placeholder section
+  // First, create/find subjects mentioned in the subject combination
+  const subjectIds = [];
+  for (const subjectName of subjectNames) {
+    if (subjectName) {
+      const { subject } = await findOrCreateSubject(
+        collegeId,
+        subjectName,
+        subjectCache,
+        results,
+        createdSubjectIds
+      );
+      subjectIds.push(subject._id);
+    }
+  }
+
+  // Note: This is a temporary section. Proper sections based on roll number ranges
+  // will be created later through dedicated section management APIs
+  const sectionName = `${year} - ${shift} - ${subjectNames.join(", ")}`;
+
+  section = await createSection({
+    name: sectionName,
+    collegeId,
+    programId,
+    year,
+    shift,
+    subjects: subjectIds, // Link the auto-created subjects
+    capacity: 100, // Default capacity, can be updated later
+    // Note: rollNumberRange will be set later when creating proper sections
+  });
+
+  return { section, wasCreated: true };
+};
+
+/**
+ * Bulk import students from raw CSV data
+ * This accepts the CSV format directly and auto-creates programs and sections
+ * @param {Array} csvData - Array of objects with CSV column names
+ * @param {String} collegeId
+ * @param {Boolean} createLoginAccounts
+ * @returns {Promise<Object>}
+ */
+export const bulkImportStudentsFromCSVService = async (
+  csvData,
+  collegeId,
+  createLoginAccounts = false
+) => {
+  // Validate college exists
+  const college = await findCollegeById(collegeId);
+  if (!college) {
+    throw new Error("College not found");
+  }
+
+  const results = {
+    successful: [],
+    failed: [],
+    programsCreated: [],
+    programsFound: [],
+    sectionsCreated: [],
+    sectionsFound: [],
+    subjectsCreated: [],
+    subjectsFound: [],
+  };
+
+  // Cache for programs, sections, and subjects to avoid repeated queries
+  const programCache = new Map();
+  const sectionCache = new Map();
+  const subjectCache = new Map();
+  const createdProgramIds = new Set();
+  const createdSectionIds = new Set();
+  const createdSubjectIds = new Set();
+
+  // Process each student
+  for (let i = 0; i < csvData.length; i++) {
+    const row = csvData[i];
+    const rowNumber = i + 1;
+
+    try {
+      // Validate required CSV fields
+      if (!row["Student Name"] || !row["Roll No"] || !row["Father Name"]) {
+        throw new Error(
+          "Missing required fields: Student Name, Roll No, or Father Name"
+        );
+      }
+
+      if (!row["Program"]) {
+        throw new Error("Missing required field: Program");
+      }
+
+      // Get or create program
+      const programString = row["Program"];
+      let program;
+      let programWasCreated = false;
+
+      if (programCache.has(programString)) {
+        program = programCache.get(programString);
+      } else {
+        const result = await findOrCreateProgram(collegeId, programString);
+        program = result.program;
+        programWasCreated = result.wasCreated;
+        programCache.set(programString, program);
+
+        // Track programs (only once per unique program)
+        if (
+          programWasCreated &&
+          !createdProgramIds.has(program._id.toString())
+        ) {
+          createdProgramIds.add(program._id.toString());
+          results.programsCreated.push({
+            _id: program._id,
+            name: program.name,
+            code: program.code,
+          });
+        } else if (
+          !programWasCreated &&
+          !results.programsFound.find(
+            (p) => p._id.toString() === program._id.toString()
+          )
+        ) {
+          results.programsFound.push({
+            _id: program._id,
+            name: program.name,
+            code: program.code,
+          });
+        }
+      }
+
+      // Get or create section (default section for now)
+      const year = row["Class"] || "1st Year";
+      const shiftInfo = row["Subject-Combination"] || "1st Shift";
+      const sectionKey = `${program._id}-${year}-${shiftInfo}`;
+
+      let section;
+      let sectionWasCreated = false;
+
+      if (sectionCache.has(sectionKey)) {
+        section = sectionCache.get(sectionKey);
+      } else {
+        const result = await findOrCreateDefaultSection(
+          collegeId,
+          program._id,
+          year,
+          shiftInfo,
+          subjectCache,
+          results,
+          createdSubjectIds
+        );
+        section = result.section;
+        sectionWasCreated = result.wasCreated;
+        sectionCache.set(sectionKey, section);
+
+        // Track sections (only once per unique section)
+        if (
+          sectionWasCreated &&
+          !createdSectionIds.has(section._id.toString())
+        ) {
+          createdSectionIds.add(section._id.toString());
+          results.sectionsCreated.push({
+            _id: section._id,
+            name: section.name,
+            year: section.year,
+            shift: section.shift,
+          });
+        } else if (
+          !sectionWasCreated &&
+          !results.sectionsFound.find(
+            (s) => s._id.toString() === section._id.toString()
+          )
+        ) {
+          results.sectionsFound.push({
+            _id: section._id,
+            name: section.name,
+            year: section.year,
+            shift: section.shift,
+          });
+        }
+      }
+
+      // Check if roll number already exists
+      const rollNumber = String(row["Roll No"]).trim();
+      const existingStudent = await findStudentByRollNumber(
+        collegeId,
+        rollNumber
+      );
+      if (existingStudent) {
+        throw new Error(`Roll number ${rollNumber} already exists`);
+      }
+
+      // Prepare student data
+      const studentData = {
+        name: row["Student Name"].trim(),
+        rollNumber: rollNumber,
+        fatherName: row["Father Name"].trim(),
+        collegeId,
+        programId: program._id,
+        sectionId: section._id,
+        status: "Active",
+      };
+
+      // Add optional fields
+      if (row["Student Phone"]) {
+        studentData.contactNumber = String(row["Student Phone"]).trim();
+      }
+
+      if (row["Student CNIC/FORM-B"]) {
+        studentData.cnic = String(row["Student CNIC/FORM-B"]).trim();
+      }
+
+      let userId = null;
+      let credentials = null;
+
+      // Create user account if requested
+      if (createLoginAccounts) {
+        const generatedEmail = await generateStudentEmail(
+          rollNumber,
+          college.code
+        );
+        const password = generateRandomString(12);
+        const hashedPassword = await hashPassword(password);
+
+        const user = await createUser({
+          email: generatedEmail,
+          password: hashedPassword,
+          role: "Student",
+        });
+
+        userId = user._id;
+        studentData.userId = userId;
+        credentials = {
+          loginEmail: generatedEmail,
+          password,
+        };
+      }
+
+      // Create student
+      const student = await createStudent(studentData);
+
+      results.successful.push({
+        row: rowNumber,
+        studentId: student._id,
+        name: studentData.name,
+        rollNumber: studentData.rollNumber,
+        program: program.name,
+        section: section.name,
+        ...(credentials && { credentials }),
+      });
+    } catch (error) {
+      results.failed.push({
+        row: rowNumber,
+        data: {
+          name: row["Student Name"],
+          rollNumber: row["Roll No"],
+          program: row["Program"],
+        },
+        error: error.message,
+      });
+    }
+  }
+
+  return {
+    summary: {
+      total: csvData.length,
+      successful: results.successful.length,
+      failed: results.failed.length,
+      programsCreated: results.programsCreated.length,
+      programsFound: results.programsFound.length,
+      sectionsCreated: results.sectionsCreated.length,
+      sectionsFound: results.sectionsFound.length,
+      subjectsCreated: results.subjectsCreated.length,
+      subjectsFound: results.subjectsFound.length,
+    },
+    programs: {
+      created: results.programsCreated,
+      found: results.programsFound,
+    },
+    sections: {
+      created: results.sectionsCreated,
+      found: results.sectionsFound,
+    },
+    subjects: {
+      created: results.subjectsCreated,
+      found: results.subjectsFound,
+    },
+    results: {
+      successful: results.successful,
+      failed: results.failed,
+    },
+  };
 };

@@ -13,6 +13,25 @@ export const findSectionById = async (sectionId) => {
 };
 
 /**
+ * Find multiple sections by IDs
+ * @param {Array<String>} sectionIds
+ * @param {String} collegeId - Optional college filter
+ * @returns {Promise<Array>}
+ */
+export const findSectionsByIds = async (sectionIds, collegeId = null) => {
+  const query = { _id: { $in: sectionIds }, isActive: true };
+  if (collegeId) {
+    query.collegeId = collegeId;
+  }
+
+  return await Section.find(query)
+    .populate("collegeId")
+    .populate("programId")
+    .populate("subjects")
+    .sort({ name: 1 });
+};
+
+/**
  * Find sections by college ID
  * @param {String} collegeId
  * @param {Object} options - Pagination options
@@ -137,4 +156,102 @@ export const addSubjectToSection = async (sectionId, subjectId) => {
     { $addToSet: { subjects: subjectId } },
     { new: true }
   ).populate("subjects");
+};
+
+/**
+ * Delete (soft delete) section
+ * @param {String} sectionId
+ * @returns {Promise<Object|null>}
+ */
+export const deleteSection = async (sectionId) => {
+  return await Section.findByIdAndUpdate(
+    sectionId,
+    { isActive: false },
+    { new: true }
+  );
+};
+
+/**
+ * Find sections by program and year (college-scoped)
+ * @param {String} collegeId
+ * @param {String} programId
+ * @param {String} year
+ * @returns {Promise<Array>}
+ */
+export const findSectionsByProgramAndYear = async (
+  collegeId,
+  programId,
+  year
+) => {
+  return await Section.find({
+    collegeId,
+    programId,
+    year,
+    isActive: true,
+  })
+    .populate("subjects")
+    .sort({ name: 1 });
+};
+
+/**
+ * Check if roll number range overlaps with existing sections
+ * @param {String} collegeId
+ * @param {String} programId
+ * @param {String} year
+ * @param {Number} startRoll
+ * @param {Number} endRoll
+ * @param {String} excludeSectionId - Exclude this section from check (for updates)
+ * @returns {Promise<Boolean>}
+ */
+export const isRollRangeOverlapping = async (
+  collegeId,
+  programId,
+  year,
+  startRoll,
+  endRoll,
+  excludeSectionId = null
+) => {
+  const query = {
+    collegeId,
+    programId,
+    year,
+    isActive: true,
+    $or: [
+      {
+        "rollNumberRange.start": { $lte: endRoll },
+        "rollNumberRange.end": { $gte: startRoll },
+      },
+    ],
+  };
+
+  if (excludeSectionId) {
+    query._id = { $ne: excludeSectionId };
+  }
+
+  const overlapping = await Section.findOne(query);
+  return !!overlapping;
+};
+
+/**
+ * Get students count by section
+ * @param {String} sectionId
+ * @returns {Promise<Number>}
+ */
+export const getStudentsCountInSection = async (sectionId) => {
+  const Student = (await import("../models/student.js")).default;
+  return await Student.countDocuments({ sectionId, isActive: true });
+};
+
+/**
+ * Bulk update students' section
+ * @param {Array} studentIds
+ * @param {String} newSectionId
+ * @returns {Promise<Object>}
+ */
+export const bulkUpdateStudentSection = async (studentIds, newSectionId) => {
+  const Student = (await import("../models/student.js")).default;
+  return await Student.updateMany(
+    { _id: { $in: studentIds } },
+    { $set: { sectionId: newSectionId } }
+  );
 };

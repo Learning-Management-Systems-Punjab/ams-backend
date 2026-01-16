@@ -7,7 +7,11 @@ import Program from "../models/program.js";
  * @returns {Promise<Object|null>}
  */
 export const findProgramById = async (programId, collegeId) => {
-  return await Program.findOne({ _id: programId, collegeId, isActive: true }).populate("subjects");
+  return await Program.findOne({
+    _id: programId,
+    collegeId,
+    isActive: true,
+  }).populate("subjects");
 };
 
 /**
@@ -17,17 +21,27 @@ export const findProgramById = async (programId, collegeId) => {
  * @returns {Promise<Object|null>}
  */
 export const findProgramByCode = async (collegeId, code) => {
-  return await Program.findOne({ collegeId, code: code.toUpperCase(), isActive: true }).populate("subjects");
+  return await Program.findOne({
+    collegeId,
+    code: code.toUpperCase(),
+    isActive: true,
+  }).populate("subjects");
 };
 
 /**
- * Find program by name and college
+ * Find program by name and college (case-insensitive exact match)
  * @param {String} collegeId
  * @param {String} name
  * @returns {Promise<Object|null>}
  */
 export const findProgramByName = async (collegeId, name) => {
-  return await Program.findOne({ collegeId, name: new RegExp(`^${name}$`, 'i'), isActive: true }).populate("subjects");
+  // Escape special regex characters in the name
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return await Program.findOne({
+    collegeId,
+    name: new RegExp(`^${escapedName}$`, "i"),
+    isActive: true,
+  }).populate("subjects");
 };
 
 /**
@@ -100,7 +114,11 @@ export const addSubjectToProgram = async (programId, collegeId, subjectId) => {
  * @param {String} subjectId
  * @returns {Promise<Object|null>}
  */
-export const removeSubjectFromProgram = async (programId, collegeId, subjectId) => {
+export const removeSubjectFromProgram = async (
+  programId,
+  collegeId,
+  subjectId
+) => {
   return await Program.findOneAndUpdate(
     { _id: programId, collegeId },
     { $pull: { subjects: subjectId } },
@@ -116,10 +134,21 @@ export const removeSubjectFromProgram = async (programId, collegeId, subjectId) 
  * @param {Number} duration
  * @returns {Promise<Object>}
  */
-export const findOrCreateProgram = async (collegeId, name, code, duration = 2) => {
+export const findOrCreateProgram = async (
+  collegeId,
+  name,
+  code,
+  duration = 2
+) => {
   let program = await findProgramByName(collegeId, name);
   if (!program) {
-    program = await createProgram({ collegeId, name, code, duration, subjects: [] });
+    program = await createProgram({
+      collegeId,
+      name,
+      code,
+      duration,
+      subjects: [],
+    });
   }
   return program;
 };

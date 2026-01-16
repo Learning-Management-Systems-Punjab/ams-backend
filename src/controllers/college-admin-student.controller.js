@@ -6,6 +6,7 @@ import {
   deleteStudentService,
   searchStudentsService,
   bulkImportStudentsService,
+  bulkImportStudentsFromCSVService,
   exportStudentsService,
 } from "../services/college-admin-student.service.js";
 import { findCollegeByUserId } from "../dal/college.dal.js";
@@ -339,6 +340,57 @@ export const exportStudents = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to export students",
+    });
+  }
+};
+
+/**
+ * Bulk import students from CSV format (auto-creates programs and sections)
+ */
+export const bulkImportStudentsFromCSV = async (req, res) => {
+  try {
+    const { students, createLoginAccounts } = req.body;
+    const userId = req.user.userId;
+
+    if (!students || !Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Students array is required and must not be empty",
+      });
+    }
+
+    if (students.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: "Maximum 500 students can be imported at once",
+      });
+    }
+
+    // Find college for this user
+    const college = await findCollegeByUserId(userId);
+    if (!college) {
+      return res.status(404).json({
+        success: false,
+        message: "College not found for this admin",
+      });
+    }
+
+    const result = await bulkImportStudentsFromCSVService(
+      students,
+      college._id.toString(),
+      createLoginAccounts || false
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "CSV import completed",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in bulkImportStudentsFromCSV:", error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to import students from CSV",
     });
   }
 };

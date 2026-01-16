@@ -7,6 +7,7 @@ import {
   deleteStudent,
   searchStudents,
   bulkImportStudents,
+  bulkImportStudentsFromCSV,
   exportStudents,
 } from "../controllers/college-admin-student.controller.js";
 import {
@@ -16,6 +17,7 @@ import {
   paginationValidation,
   searchValidation,
   bulkImportValidation,
+  bulkImportCSVValidation,
   exportValidation,
 } from "../validators/college-admin-student.validator.js";
 import { validate } from "../middlewares/validate.js";
@@ -115,8 +117,22 @@ router.delete(
 );
 
 /**
+ * @route   POST /api/college-admin/students/bulk-import-csv
+ * @desc    Bulk import students from CSV format (auto-creates programs and sections)
+ * @access  CollegeAdmin
+ * @important This route MUST come before /bulk-import to match correctly
+ */
+router.post(
+  "/bulk-import-csv",
+  ...isCollegeAdmin,
+  bulkImportCSVValidation,
+  validate,
+  bulkImportStudentsFromCSV
+);
+
+/**
  * @route   POST /api/college-admin/students/bulk-import
- * @desc    Bulk import students
+ * @desc    Bulk import students (requires programId and sectionId)
  * @access  CollegeAdmin
  */
 router.post(

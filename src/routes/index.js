@@ -10,6 +10,12 @@ import subjectRoutes from "./subject.routes.js";
 import collegeAdminStatisticsRoutes from "./college-admin-statistics.routes.js";
 import collegeAdminTeacherRoutes from "./college-admin-teacher.routes.js";
 import collegeAdminStudentRoutes from "./college-admin-student.routes.js";
+import collegeAdminSubjectRoutes from "./college-admin-subject.routes.js";
+import collegeAdminSectionRoutes from "./college-admin-section.routes.js";
+import collegeAdminTeacherAssignmentRoutes from "./college-admin-teacherAssignment.routes.js";
+import collegeAdminAttendanceRoutes from "./college-admin-attendance.routes.js";
+import teacherPortalRoutes from "./teacher-portal.routes.js";
+import studentPortalRoutes from "./student-portal.routes.js";
 
 const router = express.Router();
 
@@ -34,5 +40,14 @@ router.use("/subjects", subjectRoutes);
 router.use("/college-admin/statistics", collegeAdminStatisticsRoutes);
 router.use("/college-admin/teachers", collegeAdminTeacherRoutes);
 router.use("/college-admin/students", collegeAdminStudentRoutes);
+router.use("/college-admin/subjects", collegeAdminSubjectRoutes);
+router.use("/college-admin/sections", collegeAdminSectionRoutes);
+router.use(
+  "/college-admin/teacher-assignments",
+  collegeAdminTeacherAssignmentRoutes
+);
+router.use("/college-admin/attendance", collegeAdminAttendanceRoutes);
+router.use("/teacher-portal", teacherPortalRoutes);
+router.use("/student-portal", studentPortalRoutes);
 
 export default router;

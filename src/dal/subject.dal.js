@@ -25,15 +25,17 @@ export const findSubjectByCode = async (collegeId, code) => {
 };
 
 /**
- * Find subject by name and college
+ * Find subject by name and college (case-insensitive exact match)
  * @param {String} collegeId
  * @param {String} name
  * @returns {Promise<Object|null>}
  */
 export const findSubjectByName = async (collegeId, name) => {
+  // Escape special regex characters in the name
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return await Subject.findOne({
     collegeId,
-    name: new RegExp(`^${name}$`, "i"),
+    name: new RegExp(`^${escapedName}$`, "i"),
     isActive: true,
   });
 };

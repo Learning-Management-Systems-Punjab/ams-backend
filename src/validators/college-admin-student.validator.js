@@ -253,6 +253,7 @@ export const bulkImportValidation = [
     .withMessage("Students must be an array with 1 to 500 items"),
 
   body("students.*.name")
+    .if(body("students.*.name").exists())
     .trim()
     .notEmpty()
     .withMessage("Each student must have a name")
@@ -260,6 +261,7 @@ export const bulkImportValidation = [
     .withMessage("Name must be between 2 and 100 characters"),
 
   body("students.*.rollNumber")
+    .if(body("students.*.rollNumber").exists())
     .trim()
     .notEmpty()
     .withMessage("Each student must have a roll number")
@@ -267,6 +269,7 @@ export const bulkImportValidation = [
     .withMessage("Roll number must be between 1 and 50 characters"),
 
   body("students.*.fatherName")
+    .if(body("students.*.fatherName").exists())
     .trim()
     .notEmpty()
     .withMessage("Each student must have a father name")
@@ -274,7 +277,7 @@ export const bulkImportValidation = [
     .withMessage("Father name must be between 2 and 100 characters"),
 
   body("students.*.contactNumber")
-    .optional()
+    .optional({ checkFalsy: true })
     .trim()
     .matches(/^(\+92|0)?[0-9]{10}$/)
     .withMessage("Contact number must be a valid Pakistani phone number"),
@@ -338,4 +341,37 @@ export const exportValidation = [
     .optional()
     .isMongoId()
     .withMessage("Section ID must be a valid MongoDB ID"),
+];
+
+/**
+ * Validation for CSV import (raw CSV format)
+ */
+export const bulkImportCSVValidation = [
+  body("students")
+    .notEmpty()
+    .withMessage("Students array is required")
+    .isArray({ min: 1, max: 500 })
+    .withMessage("Students must be an array with 1 to 500 items"),
+
+  body("students.*").custom((value) => {
+    // Check for required CSV fields
+    if (!value["Student Name"]) {
+      throw new Error("Student Name is required in CSV format");
+    }
+    if (!value["Roll No"]) {
+      throw new Error("Roll No is required in CSV format");
+    }
+    if (!value["Father Name"]) {
+      throw new Error("Father Name is required in CSV format");
+    }
+    if (!value["Program"]) {
+      throw new Error("Program is required in CSV format");
+    }
+    return true;
+  }),
+
+  body("createLoginAccounts")
+    .optional()
+    .isBoolean()
+    .withMessage("createLoginAccounts must be a boolean"),
 ];
