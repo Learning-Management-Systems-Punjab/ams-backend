@@ -10,7 +10,7 @@
     "dev:production": "nodemon --env-file=.env.production src/index.js",
     "start": "node --env-file=.env.production src/index.js",
     "start:staging": "node --env-file=.env.staging src/index.js",
-    "prod": "node --env-file=.env src/index.js",
+    "prod": "node src/index.js",
     "seed:sysadmin": "node --env-file=.env.staging Seeders/sysadmin.js",
     "seed:sysadmin:prod": "node --env-file=.env.production Seeders/sysadmin.js",
     "import:students": "node --env-file=.env.staging Seeders/importStudents.js",
