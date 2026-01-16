@@ -113,3 +113,69 @@ export const findOrCreateSubject = async (collegeId, name, code) => {
   }
   return subject;
 };
+
+/**
+ * Get all subjects with pagination
+ * @param {Object} options - Pagination options
+ * @returns {Promise<Array>}
+ */
+export const getAllSubjects = async ({ skip = 0, limit = 10 }) => {
+  return await Subject.find({ isActive: true })
+    .populate("collegeId", "name code")
+    .skip(skip)
+    .limit(limit)
+    .sort({ createdAt: -1 });
+};
+
+/**
+ * Count all subjects
+ * @returns {Promise<Number>}
+ */
+export const countAllSubjects = async () => {
+  return await Subject.countDocuments({ isActive: true });
+};
+
+/**
+ * Search subjects by name or code
+ * @param {String} searchQuery
+ * @param {Object} options - Pagination options
+ * @returns {Promise<Array>}
+ */
+export const searchSubjects = async (searchQuery, { skip = 0, limit = 10 }) => {
+  const regex = new RegExp(searchQuery, "i");
+
+  return await Subject.find({
+    isActive: true,
+    $or: [{ name: regex }, { code: regex }],
+  })
+    .populate("collegeId", "name code")
+    .skip(skip)
+    .limit(limit)
+    .sort({ createdAt: -1 });
+};
+
+/**
+ * Count search results for subjects
+ * @param {String} searchQuery
+ * @returns {Promise<Number>}
+ */
+export const countSearchSubjects = async (searchQuery) => {
+  const regex = new RegExp(searchQuery, "i");
+
+  return await Subject.countDocuments({
+    isActive: true,
+    $or: [{ name: regex }, { code: regex }],
+  });
+};
+
+/**
+ * Find subject by ID (global)
+ * @param {String} subjectId
+ * @returns {Promise<Object|null>}
+ */
+export const findSubjectByIdGlobal = async (subjectId) => {
+  return await Subject.findOne({ _id: subjectId, isActive: true }).populate(
+    "collegeId",
+    "name code"
+  );
+};

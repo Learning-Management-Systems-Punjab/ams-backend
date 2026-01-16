@@ -70,6 +70,11 @@ export const isSysAdmin = [authenticate, authorize("SysAdmin")];
 export const isDistrictHead = [authenticate, authorize("DistrictHead")];
 
 /**
+ * Middleware for CollegeAdmin only
+ */
+export const isCollegeAdmin = [authenticate, authorize("CollegeAdmin")];
+
+/**
  * Middleware for Teacher only
  */
 export const isTeacher = [authenticate, authorize("Teacher")];
@@ -85,6 +90,14 @@ export const isStudent = [authenticate, authorize("Student")];
 export const isSysAdminOrDistrictHead = [
   authenticate,
   authorize("SysAdmin", "DistrictHead"),
+];
+
+/**
+ * Middleware for SysAdmin or CollegeAdmin
+ */
+export const isSysAdminOrCollegeAdmin = [
+  authenticate,
+  authorize("SysAdmin", "CollegeAdmin"),
 ];
 
 /**

@@ -34,6 +34,13 @@ const collegeSchema = new mongoose.Schema(
       min: 1900,
       max: new Date().getFullYear(),
     },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+      comment: "College Admin user account",
+    },
     isActive: {
       type: Boolean,
       default: true,

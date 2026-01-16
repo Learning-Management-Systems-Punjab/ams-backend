@@ -1,6 +1,7 @@
 import { findUserByEmail, findUserById } from "../dal/user.dal.js";
 import { findSysAdminByUserId } from "../dal/sysAdmin.dal.js";
 import { findDistrictHeadByUserId } from "../dal/districtHead.dal.js";
+import { findCollegeByUserId } from "../dal/college.dal.js";
 import { findTeacherByUserId } from "../dal/teacher.dal.js";
 import { findStudentByUserId } from "../dal/student.dal.js";
 import { comparePassword, sanitizeUser } from "../utils/helpers.js";
@@ -30,6 +31,9 @@ export const loginUser = async (email, password) => {
       break;
     case "DistrictHead":
       profile = await findDistrictHeadByUserId(user._id);
+      break;
+    case "CollegeAdmin":
+      profile = await findCollegeByUserId(user._id);
       break;
     case "Teacher":
       profile = await findTeacherByUserId(user._id);
@@ -75,6 +79,9 @@ export const getCurrentUser = async (userId, role) => {
       break;
     case "DistrictHead":
       profile = await findDistrictHeadByUserId(userId);
+      break;
+    case "CollegeAdmin":
+      profile = await findCollegeByUserId(userId);
       break;
     case "Teacher":
       profile = await findTeacherByUserId(userId);

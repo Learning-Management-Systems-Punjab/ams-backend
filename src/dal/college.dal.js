@@ -6,9 +6,9 @@ import College from "../models/college.js";
  * @returns {Promise<Object|null>}
  */
 export const findCollegeById = async (collegeId) => {
-  return await College.findOne({ _id: collegeId, isActive: true }).populate(
-    "regionId"
-  );
+  return await College.findOne({ _id: collegeId, isActive: true })
+    .populate("regionId")
+    .populate("userId", "-password");
 };
 
 /**
@@ -17,7 +17,20 @@ export const findCollegeById = async (collegeId) => {
  * @returns {Promise<Object|null>}
  */
 export const findCollegeByCode = async (code) => {
-  return await College.findOne({ code, isActive: true }).populate("regionId");
+  return await College.findOne({ code, isActive: true })
+    .populate("regionId")
+    .populate("userId", "-password");
+};
+
+/**
+ * Find College by user ID (College Admin)
+ * @param {String} userId
+ * @returns {Promise<Object|null>}
+ */
+export const findCollegeByUserId = async (userId) => {
+  return await College.findOne({ userId, isActive: true })
+    .populate("regionId")
+    .populate("userId", "-password");
 };
 
 /**
@@ -30,6 +43,7 @@ export const findCollegesByRegionId = async (regionId, options = {}) => {
   const { skip = 0, limit = 10 } = options;
   return await College.find({ regionId, isActive: true })
     .populate("regionId")
+    .populate("userId", "-password")
     .skip(skip)
     .limit(limit)
     .sort({ name: 1 });
@@ -62,7 +76,9 @@ export const createCollege = async (collegeData) => {
 export const updateCollege = async (collegeId, updateData) => {
   return await College.findByIdAndUpdate(collegeId, updateData, {
     new: true,
-  }).populate("regionId");
+  })
+    .populate("regionId")
+    .populate("userId", "-password");
 };
 
 /**
@@ -74,6 +90,7 @@ export const getAllColleges = async (options = {}) => {
   const { skip = 0, limit = 10 } = options;
   return await College.find({ isActive: true })
     .populate("regionId")
+    .populate("userId", "-password")
     .skip(skip)
     .limit(limit)
     .sort({ name: 1 });
@@ -85,4 +102,40 @@ export const getAllColleges = async (options = {}) => {
  */
 export const countAllColleges = async () => {
   return await College.countDocuments({ isActive: true });
+};
+
+/**
+ * Search colleges by name, code, or city
+ * @param {String} searchQuery
+ * @param {Object} options - Pagination options
+ * @param {Number} options.skip
+ * @param {Number} options.limit
+ * @returns {Promise<Array>}
+ */
+export const searchColleges = async (searchQuery, { skip = 0, limit = 10 }) => {
+  const regex = new RegExp(searchQuery, "i");
+
+  return await College.find({
+    isActive: true,
+    $or: [{ name: regex }, { code: regex }, { city: regex }],
+  })
+    .populate("regionId", "name code")
+    .populate("userId", "-password")
+    .skip(skip)
+    .limit(limit)
+    .sort({ createdAt: -1 });
+};
+
+/**
+ * Count search results for colleges
+ * @param {String} searchQuery
+ * @returns {Promise<Number>}
+ */
+export const countSearchColleges = async (searchQuery) => {
+  const regex = new RegExp(searchQuery, "i");
+
+  return await College.countDocuments({
+    isActive: true,
+    $or: [{ name: regex }, { code: regex }, { city: regex }],
+  });
 };
