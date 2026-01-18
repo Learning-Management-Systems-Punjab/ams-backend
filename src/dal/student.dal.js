@@ -355,5 +355,17 @@ export const isRollNumberExists = async (
   return count > 0;
 };
 
+/**
+ * Unassign students from their section (set sectionId to null)
+ * @param {String} sectionId - Section ID to unassign students from
+ * @returns {Promise<Object>} - Update result with modifiedCount
+ */
+export const unassignStudentsFromSection = async (sectionId) => {
+  return await Student.updateMany(
+    { sectionId, isActive: true },
+    { $set: { sectionId: null } }
+  );
+};
+
 // Alias for backward compatibility
 export const findStudentsBySection = findStudentsBySectionId;

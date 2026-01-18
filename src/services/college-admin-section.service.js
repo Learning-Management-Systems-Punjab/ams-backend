@@ -18,6 +18,7 @@ import {
   findStudentsBySection,
   findStudentById as findStudentByIdDAL,
   updateStudent,
+  unassignStudentsFromSection,
 } from "../dal/student.dal.js";
 
 /**
@@ -201,6 +202,7 @@ export const updateSectionService = async (
 
 /**
  * Delete section (soft delete, college-scoped)
+ * Unassigns all students from the section before deletion
  * @param {String} sectionId
  * @param {String} collegeId
  * @returns {Promise<Object>}
@@ -216,19 +218,22 @@ export const deleteSectionService = async (sectionId, collegeId) => {
     throw new Error("Section does not belong to your college");
   }
 
-  // Check if section has students
+  // Unassign all students from this section (set sectionId to null)
   const studentCount = await getStudentsCountInSection(sectionId);
+  let unassignedCount = 0;
+
   if (studentCount > 0) {
-    throw new Error(
-      `Cannot delete section with ${studentCount} students. Please reassign students first.`
-    );
+    const result = await unassignStudentsFromSection(sectionId);
+    unassignedCount = result.modifiedCount;
   }
 
+  // Delete the section
   await deleteSection(sectionId);
 
   return {
     message: "Section deleted successfully",
     sectionId,
+    studentsUnassigned: unassignedCount,
   };
 };
 
