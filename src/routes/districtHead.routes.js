@@ -90,6 +90,19 @@ router.get(
 );
 
 /**
+ * @route   POST /api/district-heads/:districtHeadId/reset-password
+ * @desc    Reset district head password
+ * @access  Private - SysAdmin only
+ */
+router.post(
+  "/:districtHeadId/reset-password",
+  isSysAdmin,
+  resetDistrictHeadPasswordValidation,
+  validate,
+  resetDistrictHeadPassword
+);
+
+/**
  * @route   GET /api/district-heads/:userId
  * @desc    Get district head by user ID
  * @access  Private - SysAdmin only
@@ -113,19 +126,6 @@ router.put(
   updateDistrictHeadValidation,
   validate,
   updateDistrictHead
-);
-
-/**
- * @route   POST /api/district-heads/:districtHeadId/reset-password
- * @desc    Reset district head password
- * @access  Private - SysAdmin only
- */
-router.post(
-  "/:districtHeadId/reset-password",
-  isSysAdmin,
-  resetDistrictHeadPasswordValidation,
-  validate,
-  resetDistrictHeadPassword
 );
 
 export default router;

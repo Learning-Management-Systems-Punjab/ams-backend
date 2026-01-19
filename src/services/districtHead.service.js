@@ -246,7 +246,8 @@ export const searchDistrictHeadsService = async (
  * @returns {Promise<Object>}
  */
 export const resetDistrictHeadPasswordService = async (districtHeadId) => {
-  const districtHead = await findDistrictHeadByUserId(districtHeadId);
+  const districtHead = await findDistrictHeadById(districtHeadId);
+
   if (!districtHead) {
     throw new Error("District Head not found");
   }
@@ -265,7 +266,6 @@ export const resetDistrictHeadPasswordService = async (districtHeadId) => {
     newPassword, // Return plain password to frontend
   };
 };
-
 /**
  * Export district heads to CSV format
  * @param {Boolean} includePassword - Whether to reset and include passwords
