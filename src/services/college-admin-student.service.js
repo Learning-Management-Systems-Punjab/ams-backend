@@ -16,6 +16,8 @@ import {
   bulkCreateStudents,
   getAllStudentsForExport,
   isRollNumberExists,
+  findStudentsWithoutSection,
+  countStudentsWithoutSection,
 } from "../dal/student.dal.js";
 import { findCollegeById } from "../dal/college.dal.js";
 import {
@@ -23,7 +25,12 @@ import {
   findProgramByName,
   createProgram,
 } from "../dal/program.dal.js";
-import { findSectionById, createSection } from "../dal/section.dal.js";
+import {
+  findSectionById,
+  createSection,
+  incrementSectionStrength,
+  decrementSectionStrength,
+} from "../dal/section.dal.js";
 import { findSubjectByName, createSubject } from "../dal/subject.dal.js";
 import { createUser, findUserByEmail } from "../dal/user.dal.js";
 import { hashPassword, generateRandomString } from "../utils/helpers.js";
@@ -77,7 +84,7 @@ const generateStudentEmail = async (rollNumber, collegeCode) => {
 export const createStudentService = async (
   studentData,
   collegeId,
-  createLoginAccount = false
+  createLoginAccount = false,
 ) => {
   const {
     name,
@@ -102,12 +109,9 @@ export const createStudentService = async (
   }
 
   // Validate program exists and belongs to college
-  const program = await findProgramById(programId);
+  const program = await findProgramById(programId, collegeId);
   if (!program) {
     throw new Error("Program not found");
-  }
-  if (program.collegeId.toString() !== collegeId.toString()) {
-    throw new Error("Program does not belong to your college");
   }
 
   // Validate section exists and belongs to college
@@ -179,42 +183,44 @@ export const createStudentService = async (
  * @param {String} collegeId
  * @param {Number} page
  * @param {Number} limit
- * @param {Object} filters - Optional filters (programId, sectionId, status)
+ * @param {Object} filters - Optional filters (programId, sectionId, status, noSection)
  * @returns {Promise<Object>}
  */
 export const getAllStudentsService = async (
   collegeId,
   page = 1,
   limit = 50,
-  filters = {}
+  filters = {},
 ) => {
   const skip = (page - 1) * limit;
 
-  let query = { collegeId, isActive: true };
+  let students, total;
 
-  // Apply filters
-  if (filters.programId) {
-    query.programId = filters.programId;
+  // If noSection filter is true, get students without section assignment
+  if (filters.noSection) {
+    [students, total] = await Promise.all([
+      findStudentsWithoutSection(collegeId, filters.programId || null, {
+        skip,
+        limit,
+      }),
+      countStudentsWithoutSection(collegeId, filters.programId || null),
+    ]);
+  } else if (filters.sectionId) {
+    [students, total] = await Promise.all([
+      findStudentsBySectionId(filters.sectionId, { skip, limit }),
+      countStudentsBySectionId(filters.sectionId),
+    ]);
+  } else if (filters.programId) {
+    [students, total] = await Promise.all([
+      findStudentsByProgramId(collegeId, filters.programId, { skip, limit }),
+      countStudentsByProgramId(collegeId, filters.programId),
+    ]);
+  } else {
+    [students, total] = await Promise.all([
+      findStudentsByCollegeId(collegeId, { skip, limit }),
+      countStudentsByCollegeId(collegeId),
+    ]);
   }
-  if (filters.sectionId) {
-    query.sectionId = filters.sectionId;
-  }
-  if (filters.status) {
-    query.status = filters.status;
-  }
-
-  const [students, total] = await Promise.all([
-    filters.sectionId
-      ? findStudentsBySectionId(filters.sectionId, { skip, limit })
-      : filters.programId
-      ? findStudentsByProgramId(collegeId, filters.programId, { skip, limit })
-      : findStudentsByCollegeId(collegeId, { skip, limit }),
-    filters.sectionId
-      ? countStudentsBySectionId(filters.sectionId)
-      : filters.programId
-      ? countStudentsByProgramId(collegeId, filters.programId)
-      : countStudentsByCollegeId(collegeId),
-  ]);
 
   return {
     students,
@@ -258,7 +264,7 @@ export const getStudentByIdService = async (studentId, collegeId) => {
 export const updateStudentService = async (
   studentId,
   updateData,
-  collegeId
+  collegeId,
 ) => {
   const student = await findStudentById(studentId);
 
@@ -276,23 +282,20 @@ export const updateStudentService = async (
     const existingRollNumber = await isRollNumberExists(
       collegeId,
       updateData.rollNumber,
-      studentId
+      studentId,
     );
     if (existingRollNumber) {
       throw new Error(
-        `Roll number ${updateData.rollNumber} already exists in your college`
+        `Roll number ${updateData.rollNumber} already exists in your college`,
       );
     }
   }
 
   // Validate program if updating
   if (updateData.programId) {
-    const program = await findProgramById(updateData.programId);
+    const program = await findProgramById(updateData.programId, collegeId);
     if (!program) {
       throw new Error("Program not found");
-    }
-    if (program.collegeId.toString() !== collegeId.toString()) {
-      throw new Error("Program does not belong to your college");
     }
   }
 
@@ -353,7 +356,7 @@ export const searchStudentsService = async (
   collegeId,
   searchQuery,
   page = 1,
-  limit = 50
+  limit = 50,
 ) => {
   const skip = (page - 1) * limit;
 
@@ -383,7 +386,7 @@ export const searchStudentsService = async (
 export const bulkImportStudentsService = async (
   studentsData,
   collegeId,
-  createLoginAccounts = false
+  createLoginAccounts = false,
 ) => {
   // Validate college exists
   const college = await findCollegeById(collegeId);
@@ -409,7 +412,7 @@ export const bulkImportStudentsService = async (
         !studentData.fatherName
       ) {
         throw new Error(
-          "Missing required fields: name, rollNumber, or fatherName"
+          "Missing required fields: name, rollNumber, or fatherName",
         );
       }
 
@@ -420,19 +423,16 @@ export const bulkImportStudentsService = async (
       // Check if roll number already exists
       const existingRollNumber = await findStudentByRollNumber(
         collegeId,
-        studentData.rollNumber
+        studentData.rollNumber,
       );
       if (existingRollNumber) {
         throw new Error(`Roll number ${studentData.rollNumber} already exists`);
       }
 
       // Validate program
-      const program = await findProgramById(studentData.programId);
+      const program = await findProgramById(studentData.programId, collegeId);
       if (!program) {
         throw new Error(`Program not found: ${studentData.programId}`);
-      }
-      if (program.collegeId.toString() !== collegeId.toString()) {
-        throw new Error("Program does not belong to your college");
       }
 
       // Validate section
@@ -451,7 +451,7 @@ export const bulkImportStudentsService = async (
       if (createLoginAccounts) {
         const generatedEmail = await generateStudentEmail(
           studentData.rollNumber,
-          college.code
+          college.code,
         );
         const password = generateRandomString(12);
         const hashedPassword = await hashPassword(password);
@@ -515,12 +515,12 @@ export const exportStudentsService = async (collegeId, filters = {}) => {
   let filteredStudents = students;
   if (filters.programId) {
     filteredStudents = filteredStudents.filter(
-      (s) => s.programId._id.toString() === filters.programId.toString()
+      (s) => s.programId._id.toString() === filters.programId.toString(),
     );
   }
   if (filters.sectionId) {
     filteredStudents = filteredStudents.filter(
-      (s) => s.sectionId._id.toString() === filters.sectionId.toString()
+      (s) => s.sectionId._id.toString() === filters.sectionId.toString(),
     );
   }
 
@@ -635,7 +635,7 @@ const findOrCreateSubject = async (
   subjectName,
   subjectCache,
   results,
-  createdSubjectIds
+  createdSubjectIds,
 ) => {
   // Check cache first
   if (subjectCache.has(subjectName)) {
@@ -652,7 +652,7 @@ const findOrCreateSubject = async (
     // Track in results (only once per unique subject)
     if (
       !results.subjectsFound.find(
-        (s) => s._id.toString() === subject._id.toString()
+        (s) => s._id.toString() === subject._id.toString(),
       )
     ) {
       results.subjectsFound.push({
@@ -710,7 +710,7 @@ const findOrCreateDefaultSection = async (
   shiftInfo,
   subjectCache,
   results,
-  createdSubjectIds
+  createdSubjectIds,
 ) => {
   // Parse shift from shiftInfo
   const shiftMatch = shiftInfo.match(/(\d+(?:st|nd|rd|th)\s+Shift)/i);
@@ -749,7 +749,7 @@ const findOrCreateDefaultSection = async (
         subjectName,
         subjectCache,
         results,
-        createdSubjectIds
+        createdSubjectIds,
       );
       subjectIds.push(subject._id);
     }
@@ -775,7 +775,9 @@ const findOrCreateDefaultSection = async (
 
 /**
  * Bulk import students from raw CSV data
- * This accepts the CSV format directly and auto-creates programs and sections
+ * This accepts the CSV format directly and auto-creates programs and subjects
+ * NOTE: Sections are NOT created - students will be imported without section assignment
+ *       Sections should be created separately, then students can be assigned to sections
  * @param {Array} csvData - Array of objects with CSV column names
  * @param {String} collegeId
  * @param {Boolean} createLoginAccounts
@@ -784,7 +786,7 @@ const findOrCreateDefaultSection = async (
 export const bulkImportStudentsFromCSVService = async (
   csvData,
   collegeId,
-  createLoginAccounts = false
+  createLoginAccounts = false,
 ) => {
   // Validate college exists
   const college = await findCollegeById(collegeId);
@@ -797,19 +799,25 @@ export const bulkImportStudentsFromCSVService = async (
     failed: [],
     programsCreated: [],
     programsFound: [],
-    sectionsCreated: [],
-    sectionsFound: [],
     subjectsCreated: [],
     subjectsFound: [],
   };
 
-  // Cache for programs, sections, and subjects to avoid repeated queries
+  // Cache for programs and subjects to avoid repeated queries
   const programCache = new Map();
-  const sectionCache = new Map();
   const subjectCache = new Map();
   const createdProgramIds = new Set();
-  const createdSectionIds = new Set();
   const createdSubjectIds = new Set();
+
+  // Pre-fetch all existing roll numbers for this college to avoid N+1 queries
+  const Student = (await import("../models/student.js")).default;
+  const existingStudents = await Student.find(
+    { collegeId, isActive: true },
+    { rollNumber: 1 },
+  ).lean();
+  const existingRollNumbers = new Set(
+    existingStudents.map((s) => s.rollNumber),
+  );
 
   // Process each student
   for (let i = 0; i < csvData.length; i++) {
@@ -820,12 +828,18 @@ export const bulkImportStudentsFromCSVService = async (
       // Validate required CSV fields
       if (!row["Student Name"] || !row["Roll No"] || !row["Father Name"]) {
         throw new Error(
-          "Missing required fields: Student Name, Roll No, or Father Name"
+          "Missing required fields: Student Name, Roll No, or Father Name",
         );
       }
 
       if (!row["Program"]) {
         throw new Error("Missing required field: Program");
+      }
+
+      // Check if roll number already exists (using pre-fetched set)
+      const rollNumber = String(row["Roll No"]).trim();
+      if (existingRollNumbers.has(rollNumber)) {
+        throw new Error(`Roll number ${rollNumber} already exists`);
       }
 
       // Get or create program
@@ -855,7 +869,7 @@ export const bulkImportStudentsFromCSVService = async (
         } else if (
           !programWasCreated &&
           !results.programsFound.find(
-            (p) => p._id.toString() === program._id.toString()
+            (p) => p._id.toString() === program._id.toString(),
           )
         ) {
           results.programsFound.push({
@@ -866,75 +880,37 @@ export const bulkImportStudentsFromCSVService = async (
         }
       }
 
-      // Get or create section (default section for now)
-      const year = row["Class"] || "1st Year";
-      const shiftInfo = row["Subject-Combination"] || "1st Shift";
-      const sectionKey = `${program._id}-${year}-${shiftInfo}`;
+      // Parse and create subjects from Subject-Combination field
+      // "1st Shift - Mathematics, Chemistry, Physics" -> ["Mathematics", "Chemistry", "Physics"]
+      const shiftInfo = row["Subject-Combination"] || "";
+      const subjectsPart = shiftInfo.split("-").slice(1).join("-").trim();
+      const subjectNames = subjectsPart
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s);
 
-      let section;
-      let sectionWasCreated = false;
-
-      if (sectionCache.has(sectionKey)) {
-        section = sectionCache.get(sectionKey);
-      } else {
-        const result = await findOrCreateDefaultSection(
-          collegeId,
-          program._id,
-          year,
-          shiftInfo,
-          subjectCache,
-          results,
-          createdSubjectIds
-        );
-        section = result.section;
-        sectionWasCreated = result.wasCreated;
-        sectionCache.set(sectionKey, section);
-
-        // Track sections (only once per unique section)
-        if (
-          sectionWasCreated &&
-          !createdSectionIds.has(section._id.toString())
-        ) {
-          createdSectionIds.add(section._id.toString());
-          results.sectionsCreated.push({
-            _id: section._id,
-            name: section.name,
-            year: section.year,
-            shift: section.shift,
-          });
-        } else if (
-          !sectionWasCreated &&
-          !results.sectionsFound.find(
-            (s) => s._id.toString() === section._id.toString()
-          )
-        ) {
-          results.sectionsFound.push({
-            _id: section._id,
-            name: section.name,
-            year: section.year,
-            shift: section.shift,
-          });
+      // Create/find subjects mentioned in the subject combination
+      for (const subjectName of subjectNames) {
+        if (subjectName) {
+          await findOrCreateSubject(
+            collegeId,
+            subjectName,
+            subjectCache,
+            results,
+            createdSubjectIds,
+          );
         }
       }
 
-      // Check if roll number already exists
-      const rollNumber = String(row["Roll No"]).trim();
-      const existingStudent = await findStudentByRollNumber(
-        collegeId,
-        rollNumber
-      );
-      if (existingStudent) {
-        throw new Error(`Roll number ${rollNumber} already exists`);
-      }
-
-      // Prepare student data
+      // Prepare student data - NOTE: sectionId is NOT set
+      // Students will be assigned to sections later through the Sections management page
       const studentData = {
         name: row["Student Name"].trim(),
         rollNumber: rollNumber,
         fatherName: row["Father Name"].trim(),
         collegeId,
         programId: program._id,
-        sectionId: section._id,
+        sectionId: null, // No section assigned - will be done later
         status: "Active",
       };
 
@@ -947,6 +923,12 @@ export const bulkImportStudentsFromCSVService = async (
         studentData.cnic = String(row["Student CNIC/FORM-B"]).trim();
       }
 
+      // Store year and shift info in a temporary field for later section assignment reference
+      // This helps when creating sections later
+      const year = row["Class"] || "1st Year";
+      const shiftMatch = shiftInfo.match(/(\d+(?:st|nd|rd|th)\s+Shift)/i);
+      const shift = shiftMatch ? shiftMatch[1] : "1st Shift";
+
       let userId = null;
       let credentials = null;
 
@@ -954,7 +936,7 @@ export const bulkImportStudentsFromCSVService = async (
       if (createLoginAccounts) {
         const generatedEmail = await generateStudentEmail(
           rollNumber,
-          college.code
+          college.code,
         );
         const password = generateRandomString(12);
         const hashedPassword = await hashPassword(password);
@@ -976,13 +958,18 @@ export const bulkImportStudentsFromCSVService = async (
       // Create student
       const student = await createStudent(studentData);
 
+      // Add to existing roll numbers set to prevent duplicates within same import
+      existingRollNumbers.add(rollNumber);
+
       results.successful.push({
         row: rowNumber,
         studentId: student._id,
         name: studentData.name,
         rollNumber: studentData.rollNumber,
         program: program.name,
-        section: section.name,
+        year: year,
+        shift: shift,
+        sectionAssigned: false, // Indicate no section assigned yet
         ...(credentials && { credentials }),
       });
     } catch (error) {
@@ -1005,18 +992,13 @@ export const bulkImportStudentsFromCSVService = async (
       failed: results.failed.length,
       programsCreated: results.programsCreated.length,
       programsFound: results.programsFound.length,
-      sectionsCreated: results.sectionsCreated.length,
-      sectionsFound: results.sectionsFound.length,
       subjectsCreated: results.subjectsCreated.length,
       subjectsFound: results.subjectsFound.length,
+      note: "Students imported without section assignment. Create sections and assign students through the Sections management page.",
     },
     programs: {
       created: results.programsCreated,
       found: results.programsFound,
-    },
-    sections: {
-      created: results.sectionsCreated,
-      found: results.sectionsFound,
     },
     subjects: {
       created: results.subjectsCreated,
@@ -1026,5 +1008,97 @@ export const bulkImportStudentsFromCSVService = async (
       successful: results.successful,
       failed: results.failed,
     },
+  };
+};
+
+/**
+ * Move students to another section
+ * @param {Array<String>} studentIds - Array of student IDs to move
+ * @param {String} targetSectionId - Target section ID
+ * @param {String} collegeId - College ID for verification
+ * @returns {Promise<Object>} - Result with updated count
+ */
+export const moveStudentsToSectionService = async (
+  studentIds,
+  targetSectionId,
+  collegeId,
+) => {
+  // Verify target section exists and belongs to college
+  const targetSection = await findSectionById(targetSectionId);
+  if (!targetSection) {
+    throw new Error("Target section not found");
+  }
+
+  // Handle both populated and non-populated collegeId
+  const sectionCollegeId =
+    targetSection.collegeId?._id || targetSection.collegeId;
+  if (sectionCollegeId.toString() !== collegeId.toString()) {
+    throw new Error("Target section does not belong to your college");
+  }
+
+  // Update all students and track section strength changes
+  let updatedCount = 0;
+  const errors = [];
+  const oldSectionsToDecrement = new Map(); // Track old sections to decrement their strength
+
+  for (const studentId of studentIds) {
+    try {
+      const student = await findStudentById(studentId);
+
+      if (!student) {
+        errors.push({ studentId, error: "Student not found" });
+        continue;
+      }
+
+      // Handle both populated and non-populated collegeId
+      const studentCollegeId = student.collegeId?._id || student.collegeId;
+      if (studentCollegeId.toString() !== collegeId.toString()) {
+        errors.push({
+          studentId,
+          error: "Student does not belong to your college",
+        });
+        continue;
+      }
+
+      // Track old section for strength decrement (if student was in a section)
+      const oldSectionId = student.sectionId?._id || student.sectionId;
+      if (
+        oldSectionId &&
+        oldSectionId.toString() !== targetSectionId.toString()
+      ) {
+        const oldSectionKey = oldSectionId.toString();
+        oldSectionsToDecrement.set(
+          oldSectionKey,
+          (oldSectionsToDecrement.get(oldSectionKey) || 0) + 1,
+        );
+      }
+
+      await updateStudent(studentId, { sectionId: targetSectionId });
+      updatedCount++;
+    } catch (err) {
+      errors.push({ studentId, error: err.message });
+    }
+  }
+
+  // Update section strengths
+  if (updatedCount > 0) {
+    // Increment target section strength by the number of students moved
+    const Section = (await import("../models/section.js")).default;
+    await Section.findByIdAndUpdate(targetSectionId, {
+      $inc: { currentStrength: updatedCount },
+    });
+
+    // Decrement old sections' strength
+    for (const [oldSectionId, count] of oldSectionsToDecrement) {
+      await Section.findByIdAndUpdate(oldSectionId, {
+        $inc: { currentStrength: -count },
+      });
+    }
+  }
+
+  return {
+    updatedCount,
+    totalRequested: studentIds.length,
+    errors: errors.length > 0 ? errors : undefined,
   };
 };

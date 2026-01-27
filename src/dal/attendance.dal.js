@@ -49,7 +49,7 @@ export const findAttendanceBySectionDate = async (
   sectionId,
   subjectId,
   date,
-  options = {}
+  options = {},
 ) => {
   const { skip = 0, limit = 200 } = options;
 
@@ -82,7 +82,7 @@ export const findAttendanceByStudent = async (
   collegeId,
   studentId,
   filters = {},
-  options = {}
+  options = {},
 ) => {
   const { skip = 0, limit = 100 } = options;
   const { startDate, endDate, subjectId } = filters;
@@ -143,7 +143,7 @@ export const updateAttendance = async (attendanceId, collegeId, updateData) => {
   return await Attendance.findOneAndUpdate(
     { _id: attendanceId, collegeId },
     updateData,
-    { new: true }
+    { new: true },
   )
     .populate("studentId", "name rollNumber")
     .populate("subjectId", "name code");
@@ -173,7 +173,7 @@ export const isAttendanceMarked = async (
   sectionId,
   subjectId,
   date,
-  period
+  period,
 ) => {
   const startOfDay = new Date(date);
   startOfDay.setHours(0, 0, 0, 0);
@@ -182,6 +182,39 @@ export const isAttendanceMarked = async (
 
   const query = {
     studentId,
+    sectionId,
+    subjectId,
+    date: { $gte: startOfDay, $lte: endOfDay },
+  };
+
+  if (period) {
+    query.period = period;
+  }
+
+  const attendance = await Attendance.findOne(query);
+  return !!attendance;
+};
+
+/**
+ * Check if attendance already marked for a section on a date for subject
+ * @param {String} sectionId
+ * @param {String} subjectId
+ * @param {Date} date
+ * @param {Number} period
+ * @returns {Promise<Boolean>}
+ */
+export const isAttendanceMarkedForSection = async (
+  sectionId,
+  subjectId,
+  date,
+  period,
+) => {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const query = {
     sectionId,
     subjectId,
     date: { $gte: startOfDay, $lte: endOfDay },
@@ -209,7 +242,7 @@ export const getAttendanceStatsByStudent = async (
   studentId,
   subjectId = null,
   startDate = null,
-  endDate = null
+  endDate = null,
 ) => {
   const matchStage = { collegeId, studentId };
 
@@ -252,7 +285,7 @@ export const getAttendanceStatsByStudent = async (
 
   if (result.total > 0) {
     result.percentage = parseFloat(
-      ((result.present / result.total) * 100).toFixed(2)
+      ((result.present / result.total) * 100).toFixed(2),
     );
   }
 
@@ -273,7 +306,7 @@ export const getAttendanceStatsBySection = async (
   sectionId,
   subjectId,
   startDate,
-  endDate
+  endDate,
 ) => {
   const matchStage = { collegeId, sectionId, subjectId };
 

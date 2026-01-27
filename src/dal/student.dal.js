@@ -218,7 +218,7 @@ export const countSearchStudents = async (searchQuery) => {
 export const searchStudentsByCollege = async (
   collegeId,
   searchQuery,
-  { skip = 0, limit = 10 }
+  { skip = 0, limit = 10 },
 ) => {
   const regex = new RegExp(searchQuery, "i");
 
@@ -273,7 +273,7 @@ export const deleteStudent = async (studentId) => {
   return await Student.findByIdAndUpdate(
     studentId,
     { isActive: false },
-    { new: true }
+    { new: true },
   );
 };
 
@@ -301,7 +301,7 @@ export const getAllStudentsForExport = async (collegeId) => {
 export const findStudentsByProgramId = async (
   collegeId,
   programId,
-  options = {}
+  options = {},
 ) => {
   const { skip = 0, limit = 100 } = options;
   return await Student.find({ collegeId, programId, isActive: true })
@@ -327,6 +327,60 @@ export const countStudentsByProgramId = async (collegeId, programId) => {
 };
 
 /**
+ * Find students without section assignment
+ * @param {String} collegeId
+ * @param {String} programId - Optional filter by program
+ * @param {Object} options - Pagination options
+ * @returns {Promise<Array>}
+ */
+export const findStudentsWithoutSection = async (
+  collegeId,
+  programId = null,
+  options = {},
+) => {
+  const { skip = 0, limit = 100 } = options;
+  const query = {
+    collegeId,
+    isActive: true,
+    $or: [{ sectionId: null }, { sectionId: { $exists: false } }],
+  };
+
+  if (programId) {
+    query.programId = programId;
+  }
+
+  return await Student.find(query)
+    .populate("programId", "name code")
+    .populate("sectionId", "name year shift")
+    .skip(skip)
+    .limit(limit)
+    .sort({ rollNumber: 1 });
+};
+
+/**
+ * Count students without section assignment
+ * @param {String} collegeId
+ * @param {String} programId - Optional filter by program
+ * @returns {Promise<Number>}
+ */
+export const countStudentsWithoutSection = async (
+  collegeId,
+  programId = null,
+) => {
+  const query = {
+    collegeId,
+    isActive: true,
+    $or: [{ sectionId: null }, { sectionId: { $exists: false } }],
+  };
+
+  if (programId) {
+    query.programId = programId;
+  }
+
+  return await Student.countDocuments(query);
+};
+
+/**
  * Bulk create students
  * @param {Array} studentsData
  * @returns {Promise<Array>}
@@ -345,7 +399,7 @@ export const bulkCreateStudents = async (studentsData) => {
 export const isRollNumberExists = async (
   collegeId,
   rollNumber,
-  excludeStudentId = null
+  excludeStudentId = null,
 ) => {
   const query = { collegeId, rollNumber, isActive: true };
   if (excludeStudentId) {
@@ -363,7 +417,7 @@ export const isRollNumberExists = async (
 export const unassignStudentsFromSection = async (sectionId) => {
   return await Student.updateMany(
     { sectionId, isActive: true },
-    { $set: { sectionId: null } }
+    { $set: { sectionId: null } },
   );
 };
 

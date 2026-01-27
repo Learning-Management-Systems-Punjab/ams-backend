@@ -201,8 +201,8 @@ export const paginationValidation = [
 
   query("limit")
     .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage("Limit must be between 1 and 100"),
+    .isInt({ min: 1, max: 1000 })
+    .withMessage("Limit must be between 1 and 1000"),
 
   query("programId")
     .optional()
@@ -374,4 +374,27 @@ export const bulkImportCSVValidation = [
     .optional()
     .isBoolean()
     .withMessage("createLoginAccounts must be a boolean"),
+];
+
+/**
+ * Validation for moving students to a section
+ */
+export const moveSectionValidation = [
+  body("studentIds")
+    .notEmpty()
+    .withMessage("Student IDs are required")
+    .isArray({ min: 1 })
+    .withMessage("Student IDs must be an array with at least 1 item"),
+
+  body("studentIds.*")
+    .trim()
+    .isMongoId()
+    .withMessage("Each student ID must be a valid MongoDB ID"),
+
+  body("targetSectionId")
+    .trim()
+    .notEmpty()
+    .withMessage("Target section ID is required")
+    .isMongoId()
+    .withMessage("Target section ID must be a valid MongoDB ID"),
 ];

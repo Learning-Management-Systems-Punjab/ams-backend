@@ -21,7 +21,7 @@ export const findTeacherAssignmentById = async (assignmentId, collegeId) => {
     collegeId,
     isActive: true,
   })
-    .populate("teacherId", "name cnic designation")
+    .populate("teacherId", "name cnic designation contactEmail contactNumber")
     .populate("subjectId", "name code")
     .populate("sectionId", "name year shift")
     .populate("programId", "name code");
@@ -37,7 +37,7 @@ export const findTeacherAssignmentById = async (assignmentId, collegeId) => {
 export const findAssignmentsByTeacher = async (
   collegeId,
   teacherId,
-  options = {}
+  options = {},
 ) => {
   const { skip = 0, limit = 50, academicYear, semester } = options;
 
@@ -46,8 +46,16 @@ export const findAssignmentsByTeacher = async (
   if (semester) query.semester = semester;
 
   return await TeacherAssignment.find(query)
-    .populate("subjectId", "name code")
-    .populate("sectionId", "name year shift")
+    .populate("teacherId", "name cnic designation contactEmail")
+    .populate("subjectId", "name code creditHours")
+    .populate({
+      path: "sectionId",
+      select: "name year shift programId",
+      populate: {
+        path: "programId",
+        select: "name code",
+      },
+    })
     .populate("programId", "name code")
     .skip(skip)
     .limit(limit)
@@ -64,7 +72,7 @@ export const findAssignmentsByTeacher = async (
 export const countAssignmentsByTeacher = async (
   collegeId,
   teacherId,
-  filters = {}
+  filters = {},
 ) => {
   const { academicYear, semester } = filters;
 
@@ -85,7 +93,7 @@ export const countAssignmentsByTeacher = async (
 export const findAssignmentsBySection = async (
   collegeId,
   sectionId,
-  options = {}
+  options = {},
 ) => {
   const { skip = 0, limit = 50 } = options;
 
@@ -116,7 +124,7 @@ export const findAllAssignmentsByCollege = async (collegeId, options = {}) => {
   if (programId) query.programId = programId;
 
   return await TeacherAssignment.find(query)
-    .populate("teacherId", "name cnic designation")
+    .populate("teacherId", "name cnic designation contactEmail contactNumber")
     .populate("subjectId", "name code")
     .populate("sectionId", "name year shift")
     .populate("programId", "name code")
@@ -156,7 +164,7 @@ export const isAssignmentExists = async (
   subjectId,
   sectionId,
   academicYear,
-  semester
+  semester,
 ) => {
   const assignment = await TeacherAssignment.findOne({
     collegeId,
@@ -181,12 +189,12 @@ export const isAssignmentExists = async (
 export const updateTeacherAssignment = async (
   assignmentId,
   collegeId,
-  updateData
+  updateData,
 ) => {
   return await TeacherAssignment.findOneAndUpdate(
     { _id: assignmentId, collegeId },
     updateData,
-    { new: true }
+    { new: true },
   )
     .populate("teacherId", "name cnic designation")
     .populate("subjectId", "name code")
@@ -204,7 +212,7 @@ export const deleteTeacherAssignment = async (assignmentId, collegeId) => {
   return await TeacherAssignment.findOneAndUpdate(
     { _id: assignmentId, collegeId },
     { isActive: false },
-    { new: true }
+    { new: true },
   );
 };
 
@@ -213,17 +221,36 @@ export const deleteTeacherAssignment = async (assignmentId, collegeId) => {
  * @param {String} collegeId
  * @param {String} sectionId
  * @param {String} subjectId
+ * @param {String} teacherId - Optional: If provided, validates specific teacher assignment
  * @returns {Promise<Object|null>}
  */
 export const findTeacherForSectionSubject = async (
   collegeId,
   sectionId,
-  subjectId
+  subjectId,
+  teacherId = null,
 ) => {
-  return await TeacherAssignment.findOne({
+  const query = {
     collegeId,
     sectionId,
     subjectId,
     isActive: true,
-  }).populate("teacherId", "name cnic designation");
+  };
+
+  // If teacherId is provided, validate that specific teacher is assigned
+  if (teacherId) {
+    query.teacherId = teacherId;
+  }
+
+  return await TeacherAssignment.findOne(query)
+    .populate("teacherId", "name cnic designation contactEmail")
+    .populate("subjectId", "name code creditHours")
+    .populate({
+      path: "sectionId",
+      select: "name year shift programId",
+      populate: {
+        path: "programId",
+        select: "name code",
+      },
+    });
 };

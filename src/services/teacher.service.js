@@ -14,11 +14,12 @@ import { findSectionById } from "../dal/section.dal.js";
 import { findStudentsBySectionId } from "../dal/student.dal.js";
 import {
   bulkCreateAttendance,
-  isAttendanceMarked,
+  isAttendanceMarkedForSection,
   findAttendanceBySectionDate,
   getAttendanceStatsByStudent,
   getAttendanceStatsBySection,
 } from "../dal/attendance.dal.js";
+import Attendance from "../models/attendance.js";
 
 /**
  * Get all teachers with pagination
@@ -70,7 +71,7 @@ export const getTeacherByIdService = async (teacherId) => {
 export const searchTeachersService = async (
   searchQuery,
   page = 1,
-  limit = 10
+  limit = 10,
 ) => {
   const skip = (page - 1) * limit;
 
@@ -107,7 +108,7 @@ export const getMyAssignmentsService = async (
   teacherId,
   collegeId,
   page = 1,
-  limit = 50
+  limit = 50,
 ) => {
   const skip = (page - 1) * limit;
 
@@ -116,8 +117,49 @@ export const getMyAssignmentsService = async (
     countAssignmentsByTeacher(collegeId, teacherId),
   ]);
 
+  // Transform assignments to match frontend expected format
+  const transformedAssignments = assignments.map((a) => ({
+    _id: a._id,
+    teacher: a.teacherId
+      ? {
+          _id: a.teacherId._id,
+          name: a.teacherId.name,
+          email: a.teacherId.contactEmail,
+          employeeId: a.teacherId.cnic,
+        }
+      : null,
+    section: a.sectionId
+      ? {
+          _id: a.sectionId._id,
+          name: a.sectionId.name,
+          year: a.sectionId.year,
+          shift: a.sectionId.shift,
+          program: a.sectionId.programId
+            ? {
+                _id: a.sectionId.programId._id,
+                name: a.sectionId.programId.name,
+                code: a.sectionId.programId.code,
+              }
+            : null,
+        }
+      : null,
+    subject: a.subjectId
+      ? {
+          _id: a.subjectId._id,
+          name: a.subjectId.name,
+          code: a.subjectId.code,
+          creditHours: a.subjectId.creditHours,
+        }
+      : null,
+    academicYear: a.academicYear,
+    semester: a.semester,
+    schedule: a.schedule || [],
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+  }));
+
   return {
-    assignments,
+    assignments: transformedAssignments,
     pagination: {
       currentPage: page,
       perPage: limit,
@@ -143,7 +185,21 @@ export const getMySectionsService = async (teacherId, collegeId) => {
   const uniqueSections = new Map();
   assignments.forEach((a) => {
     if (a.sectionId && !uniqueSections.has(a.sectionId._id.toString())) {
-      uniqueSections.set(a.sectionId._id.toString(), a.sectionId);
+      // Transform to match frontend expected format
+      const section = {
+        _id: a.sectionId._id,
+        name: a.sectionId.name,
+        year: a.sectionId.year,
+        shift: a.sectionId.shift,
+        program: a.sectionId.programId
+          ? {
+              _id: a.sectionId.programId._id,
+              name: a.sectionId.programId.name,
+              code: a.sectionId.programId.code,
+            }
+          : null,
+      };
+      uniqueSections.set(a.sectionId._id.toString(), section);
     }
   });
 
@@ -166,7 +222,14 @@ export const getMySubjectsService = async (teacherId, collegeId) => {
   const uniqueSubjects = new Map();
   assignments.forEach((a) => {
     if (a.subjectId && !uniqueSubjects.has(a.subjectId._id.toString())) {
-      uniqueSubjects.set(a.subjectId._id.toString(), a.subjectId);
+      // Transform to match frontend expected format
+      const subject = {
+        _id: a.subjectId._id,
+        name: a.subjectId.name,
+        code: a.subjectId.code,
+        creditHours: a.subjectId.creditHours || 3,
+      };
+      uniqueSubjects.set(a.subjectId._id.toString(), subject);
     }
   });
 
@@ -183,7 +246,7 @@ export const getMySubjectsService = async (teacherId, collegeId) => {
 export const getStudentsInMySectionService = async (
   teacherId,
   collegeId,
-  sectionId
+  sectionId,
 ) => {
   // Validate section exists and belongs to college
   const section = await findSectionById(sectionId, collegeId);
@@ -198,7 +261,7 @@ export const getStudentsInMySectionService = async (
   });
 
   const isAssignedToSection = assignments.some(
-    (a) => a.sectionId._id.toString() === sectionId
+    (a) => a.sectionId._id.toString() === sectionId,
   );
 
   if (!isAssignedToSection) {
@@ -215,6 +278,7 @@ export const getStudentsInMySectionService = async (
  * Mark attendance (validates teacher is assigned to section+subject)
  * @param {String} teacherId
  * @param {String} collegeId
+ * @param {String} userId - The user account ID for markedBy
  * @param {String} sectionId
  * @param {String} subjectId
  * @param {Date} date
@@ -225,11 +289,12 @@ export const getStudentsInMySectionService = async (
 export const markAttendanceByTeacherService = async (
   teacherId,
   collegeId,
+  userId,
   sectionId,
   subjectId,
   date,
   period,
-  attendanceRecords
+  attendanceRecords,
 ) => {
   // Validate section exists and belongs to college
   const section = await findSectionById(sectionId, collegeId);
@@ -242,38 +307,41 @@ export const markAttendanceByTeacherService = async (
     collegeId,
     sectionId,
     subjectId,
-    teacherId
+    teacherId,
   );
 
   if (!assignment) {
     throw new Error(
-      "You are not assigned to teach this subject for this section"
+      "You are not assigned to teach this subject for this section",
     );
   }
 
   // Check if attendance already marked for this section/subject/date/period
-  const alreadyMarked = await isAttendanceMarked(
+  const alreadyMarked = await isAttendanceMarkedForSection(
     sectionId,
     subjectId,
     date,
-    period
+    period,
   );
 
   if (alreadyMarked) {
     throw new Error(
-      "Attendance has already been marked for this section, subject, date, and period"
+      "Attendance has already been marked for this section, subject, date, and period",
     );
   }
 
-  // Prepare attendance records with markedBy field
+  // Prepare attendance records with proper field names matching model
   const attendanceData = attendanceRecords.map((record) => ({
-    student: record.studentId,
-    section: sectionId,
-    subject: subjectId,
+    collegeId,
+    studentId: record.studentId,
+    sectionId,
+    subjectId,
+    teacherId,
     date,
     period,
     status: record.status,
-    markedBy: teacherId,
+    remarks: record.remarks || "",
+    markedBy: userId, // Use the User ID for markedBy
   }));
 
   // Mark attendance
@@ -298,7 +366,7 @@ export const getMyAttendanceBySectionDateService = async (
   sectionId,
   subjectId,
   date,
-  period
+  period,
 ) => {
   // Validate section exists
   const section = await findSectionById(sectionId, collegeId);
@@ -311,12 +379,12 @@ export const getMyAttendanceBySectionDateService = async (
     collegeId,
     sectionId,
     subjectId,
-    teacherId
+    teacherId,
   );
 
   if (!assignment) {
     throw new Error(
-      "You are not assigned to teach this subject for this section"
+      "You are not assigned to teach this subject for this section",
     );
   }
 
@@ -325,10 +393,174 @@ export const getMyAttendanceBySectionDateService = async (
     collegeId,
     sectionId,
     subjectId,
-    date
+    date,
   );
 
   return attendance;
+};
+
+/**
+ * Get attendance records for teacher with flexible filtering
+ * @param {String} teacherId
+ * @param {String} collegeId
+ * @param {Object} filters - sectionId, subjectId, date, startDate, endDate, period
+ * @param {Object} options - page, limit
+ * @returns {Promise<Object>}
+ */
+export const getMyAttendanceRecordsService = async (
+  teacherId,
+  collegeId,
+  filters = {},
+  options = {},
+) => {
+  const { page = 1, limit = 50 } = options;
+  const skip = (page - 1) * limit;
+
+  // Get teacher's assignments to filter only their sections/subjects
+  const assignments = await findAssignmentsByTeacher(collegeId, teacherId, {
+    skip: 0,
+    limit: 1000,
+  });
+
+  if (!assignments || assignments.length === 0) {
+    return {
+      attendance: [],
+      total: 0,
+      page,
+      limit,
+      totalPages: 0,
+    };
+  }
+
+  // Build match stage based on teacher's assignments
+  const assignmentConditions = assignments.map((a) => ({
+    sectionId: a.sectionId?._id || a.sectionId,
+    subjectId: a.subjectId?._id || a.subjectId,
+  }));
+
+  const matchStage = {
+    collegeId,
+    teacherId,
+    $or: assignmentConditions,
+  };
+
+  // Apply optional filters
+  if (filters.sectionId) {
+    matchStage.sectionId = filters.sectionId;
+  }
+  if (filters.subjectId) {
+    matchStage.subjectId = filters.subjectId;
+  }
+  if (filters.period) {
+    matchStage.period = parseInt(filters.period);
+  }
+
+  // Date filtering
+  if (filters.date) {
+    const startOfDay = new Date(filters.date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(filters.date);
+    endOfDay.setHours(23, 59, 59, 999);
+    matchStage.date = { $gte: startOfDay, $lte: endOfDay };
+  } else if (filters.startDate || filters.endDate) {
+    matchStage.date = {};
+    if (filters.startDate) {
+      matchStage.date.$gte = new Date(filters.startDate);
+    }
+    if (filters.endDate) {
+      const endOfDay = new Date(filters.endDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      matchStage.date.$lte = endOfDay;
+    }
+  }
+
+  // Use aggregation to group by section/subject/date/period
+  const aggregationPipeline = [
+    { $match: matchStage },
+    {
+      $group: {
+        _id: {
+          sectionId: "$sectionId",
+          subjectId: "$subjectId",
+          date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          period: "$period",
+        },
+        totalStudents: { $sum: 1 },
+        presentCount: {
+          $sum: { $cond: [{ $eq: ["$status", "Present"] }, 1, 0] },
+        },
+        absentCount: {
+          $sum: { $cond: [{ $eq: ["$status", "Absent"] }, 1, 0] },
+        },
+        lateCount: {
+          $sum: { $cond: [{ $eq: ["$status", "Late"] }, 1, 0] },
+        },
+        leaveCount: {
+          $sum: { $cond: [{ $eq: ["$status", "Leave"] }, 1, 0] },
+        },
+        markedAt: { $first: "$createdAt" },
+        teacherId: { $first: "$teacherId" },
+      },
+    },
+    { $sort: { "_id.date": -1, "_id.period": 1 } },
+    {
+      $facet: {
+        records: [{ $skip: skip }, { $limit: limit }],
+        totalCount: [{ $count: "count" }],
+      },
+    },
+  ];
+
+  const result = await Attendance.aggregate(aggregationPipeline);
+  const groupedRecords = result[0]?.records || [];
+  const total = result[0]?.totalCount[0]?.count || 0;
+
+  // Populate section, subject, and teacher details
+  const populatedRecords = await Promise.all(
+    groupedRecords.map(async (record) => {
+      const [section, subject] = await Promise.all([
+        findSectionById(record._id.sectionId, collegeId),
+        Attendance.findOne({ subjectId: record._id.subjectId })
+          .populate("subjectId", "name code")
+          .then((a) => a?.subjectId),
+      ]);
+
+      return {
+        _id: `${record._id.sectionId}-${record._id.subjectId}-${record._id.date}-${record._id.period}`,
+        section: section
+          ? {
+              _id: section._id,
+              name: section.name,
+              year: section.year,
+              shift: section.shift,
+            }
+          : null,
+        subject: subject
+          ? { _id: subject._id, name: subject.name, code: subject.code }
+          : null,
+        date: record._id.date,
+        period: record._id.period,
+        totalStudents: record.totalStudents,
+        presentCount: record.presentCount,
+        absentCount: record.absentCount,
+        lateCount: record.lateCount,
+        leaveCount: record.leaveCount,
+        attendancePercentage: Math.round(
+          ((record.presentCount + record.lateCount) / record.totalStudents) *
+            100,
+        ),
+        markedAt: record.markedAt,
+      };
+    }),
+  );
+
+  return {
+    attendance: populatedRecords,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 /**
@@ -347,7 +579,7 @@ export const getStudentAttendanceStatsForTeacherService = async (
   studentId,
   subjectId,
   startDate,
-  endDate
+  endDate,
 ) => {
   // Validate teacher is assigned to teach this subject
   const assignments = await findAssignmentsByTeacher(collegeId, teacherId, {
@@ -356,7 +588,7 @@ export const getStudentAttendanceStatsForTeacherService = async (
   });
 
   const isAssignedToSubject = assignments.some(
-    (a) => a.subjectId._id.toString() === subjectId
+    (a) => a.subjectId._id.toString() === subjectId,
   );
 
   if (!isAssignedToSubject) {
@@ -369,7 +601,7 @@ export const getStudentAttendanceStatsForTeacherService = async (
     studentId,
     subjectId,
     startDate,
-    endDate
+    endDate,
   );
 
   return stats;
@@ -391,7 +623,7 @@ export const getSectionAttendanceStatsForTeacherService = async (
   sectionId,
   subjectId,
   startDate,
-  endDate
+  endDate,
 ) => {
   // Validate section exists
   const section = await findSectionById(sectionId, collegeId);
@@ -404,12 +636,12 @@ export const getSectionAttendanceStatsForTeacherService = async (
     collegeId,
     sectionId,
     subjectId,
-    teacherId
+    teacherId,
   );
 
   if (!assignment) {
     throw new Error(
-      "You are not assigned to teach this subject for this section"
+      "You are not assigned to teach this subject for this section",
     );
   }
 
@@ -419,7 +651,7 @@ export const getSectionAttendanceStatsForTeacherService = async (
     sectionId,
     subjectId,
     startDate,
-    endDate
+    endDate,
   );
 
   return stats;
@@ -437,7 +669,7 @@ export const generateAttendanceSheetForTeacherService = async (
   teacherId,
   collegeId,
   sectionId,
-  subjectId
+  subjectId,
 ) => {
   // Validate section exists
   const section = await findSectionById(sectionId, collegeId);
@@ -450,12 +682,12 @@ export const generateAttendanceSheetForTeacherService = async (
     collegeId,
     sectionId,
     subjectId,
-    teacherId
+    teacherId,
   );
 
   if (!assignment) {
     throw new Error(
-      "You are not assigned to teach this subject for this section"
+      "You are not assigned to teach this subject for this section",
     );
   }
 
@@ -470,12 +702,19 @@ export const generateAttendanceSheetForTeacherService = async (
       semester: section.semester,
       year: section.year,
     },
-    subject: assignment.subject,
+    subject: assignment.subjectId
+      ? {
+          _id: assignment.subjectId._id,
+          name: assignment.subjectId.name,
+          code: assignment.subjectId.code,
+        }
+      : null,
     students: students.map((student) => ({
       _id: student._id,
       rollNumber: student.rollNumber,
-      name: `${student.firstName} ${student.lastName}`,
+      name: student.name,
       email: student.email,
     })),
+    alreadyMarked: false, // Frontend expects this field
   };
 };

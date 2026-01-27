@@ -9,6 +9,7 @@ import {
   bulkImportStudents,
   bulkImportStudentsFromCSV,
   exportStudents,
+  moveStudentsToSection,
 } from "../controllers/college-admin-student.controller.js";
 import {
   createStudentValidation,
@@ -19,6 +20,7 @@ import {
   bulkImportValidation,
   bulkImportCSVValidation,
   exportValidation,
+  moveSectionValidation,
 } from "../validators/college-admin-student.validator.js";
 import { validate } from "../middlewares/validate.js";
 import { isCollegeAdmin } from "../middlewares/auth.js";
@@ -35,7 +37,7 @@ router.post(
   ...isCollegeAdmin,
   createStudentValidation,
   validate,
-  createStudent
+  createStudent,
 );
 
 /**
@@ -48,7 +50,7 @@ router.get(
   ...isCollegeAdmin,
   paginationValidation,
   validate,
-  getAllStudents
+  getAllStudents,
 );
 
 /**
@@ -61,7 +63,7 @@ router.get(
   ...isCollegeAdmin,
   searchValidation,
   validate,
-  searchStudents
+  searchStudents,
 );
 
 /**
@@ -74,7 +76,7 @@ router.get(
   ...isCollegeAdmin,
   exportValidation,
   validate,
-  exportStudents
+  exportStudents,
 );
 
 /**
@@ -87,7 +89,7 @@ router.get(
   ...isCollegeAdmin,
   studentIdValidation,
   validate,
-  getStudentById
+  getStudentById,
 );
 
 /**
@@ -100,7 +102,7 @@ router.put(
   ...isCollegeAdmin,
   updateStudentValidation,
   validate,
-  updateStudent
+  updateStudent,
 );
 
 /**
@@ -113,7 +115,7 @@ router.delete(
   ...isCollegeAdmin,
   studentIdValidation,
   validate,
-  deleteStudent
+  deleteStudent,
 );
 
 /**
@@ -127,7 +129,20 @@ router.post(
   ...isCollegeAdmin,
   bulkImportCSVValidation,
   validate,
-  bulkImportStudentsFromCSV
+  bulkImportStudentsFromCSV,
+);
+
+/**
+ * @route   PATCH /api/college-admin/students/move-section
+ * @desc    Move multiple students to another section
+ * @access  CollegeAdmin
+ */
+router.patch(
+  "/move-section",
+  ...isCollegeAdmin,
+  moveSectionValidation,
+  validate,
+  moveStudentsToSection,
 );
 
 /**
@@ -140,7 +155,7 @@ router.post(
   ...isCollegeAdmin,
   bulkImportValidation,
   validate,
-  bulkImportStudents
+  bulkImportStudents,
 );
 
 export default router;

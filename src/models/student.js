@@ -55,7 +55,6 @@ const studentSchema = new mongoose.Schema(
     sectionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Section",
-      required: true,
     },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -80,7 +79,7 @@ const studentSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Compound unique index: rollNumber should be unique per college

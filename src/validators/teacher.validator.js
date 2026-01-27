@@ -95,8 +95,13 @@ export const validateMarkAttendance = [
   body("period")
     .notEmpty()
     .withMessage("Period is required")
-    .isInt({ min: 1, max: 10 })
-    .withMessage("Period must be between 1 and 10"),
+    .custom((value) => {
+      const num = parseInt(value, 10);
+      if (isNaN(num) || num < 1 || num > 10) {
+        throw new Error("Period must be between 1 and 10");
+      }
+      return true;
+    }),
   body("attendanceRecords")
     .isArray({ min: 1 })
     .withMessage("Attendance records must be a non-empty array"),
@@ -108,34 +113,42 @@ export const validateMarkAttendance = [
   body("attendanceRecords.*.status")
     .notEmpty()
     .withMessage("Status is required in each record")
-    .isIn(["Present", "Absent", "Late", "Excused"])
-    .withMessage("Status must be one of: Present, Absent, Late, Excused"),
+    .isIn(["Present", "Absent", "Late", "Leave", "Excused"])
+    .withMessage(
+      "Status must be one of: Present, Absent, Late, Leave, Excused",
+    ),
 ];
 
 /**
- * Validation for getting attendance by date
+ * Validation for getting attendance records (flexible filtering)
  */
 export const validateGetAttendanceByDate = [
-  query("sectionId")
-    .notEmpty()
-    .withMessage("Section ID is required")
-    .isMongoId()
-    .withMessage("Invalid section ID"),
-  query("subjectId")
-    .notEmpty()
-    .withMessage("Subject ID is required")
-    .isMongoId()
-    .withMessage("Invalid subject ID"),
+  query("sectionId").optional().isMongoId().withMessage("Invalid section ID"),
+  query("subjectId").optional().isMongoId().withMessage("Invalid subject ID"),
   query("date")
-    .notEmpty()
-    .withMessage("Date is required")
+    .optional()
     .isISO8601()
     .withMessage("Invalid date format. Use YYYY-MM-DD"),
+  query("startDate")
+    .optional()
+    .isISO8601()
+    .withMessage("Invalid start date format. Use YYYY-MM-DD"),
+  query("endDate")
+    .optional()
+    .isISO8601()
+    .withMessage("Invalid end date format. Use YYYY-MM-DD"),
   query("period")
-    .notEmpty()
-    .withMessage("Period is required")
+    .optional()
     .isInt({ min: 1, max: 10 })
     .withMessage("Period must be between 1 and 10"),
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer"),
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100"),
 ];
 
 /**

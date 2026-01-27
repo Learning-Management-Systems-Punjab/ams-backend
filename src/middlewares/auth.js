@@ -1,6 +1,7 @@
 import { verifyToken } from "../utils/jwt.js";
 import { sendError } from "../utils/apiHelpers.js";
 import { findUserById } from "../dal/user.dal.js";
+import { findTeacherByUserId } from "../dal/teacher.dal.js";
 
 /**
  * Verify JWT token and attach user to request
@@ -31,6 +32,16 @@ export const authenticate = async (req, res, next) => {
       role: user.role,
     };
 
+    // If user is a Teacher, attach teacher info (teacherId and collegeId)
+    if (user.role === "Teacher") {
+      const teacher = await findTeacherByUserId(user._id);
+      if (teacher) {
+        req.user.teacherId = teacher._id.toString();
+        req.user.collegeId =
+          teacher.collegeId?._id?.toString() || teacher.collegeId?.toString();
+      }
+    }
+
     next();
   } catch (error) {
     return sendError(res, 401, error.message || "Authentication failed");
@@ -51,7 +62,7 @@ export const authorize = (...allowedRoles) => {
       return sendError(
         res,
         403,
-        "You do not have permission to access this resource"
+        "You do not have permission to access this resource",
       );
     }
 

@@ -35,12 +35,9 @@ export const createSectionService = async (sectionData, collegeId) => {
   }
 
   // Validate program exists and belongs to college
-  const program = await findProgramById(sectionData.programId);
+  const program = await findProgramById(sectionData.programId, collegeId);
   if (!program) {
     throw new Error("Program not found");
-  }
-  if (program.collegeId.toString() !== collegeId.toString()) {
-    throw new Error("Program does not belong to your college");
   }
 
   // If roll number range provided, check for overlaps
@@ -56,12 +53,12 @@ export const createSectionService = async (sectionData, collegeId) => {
       sectionData.programId,
       sectionData.year,
       start,
-      end
+      end,
     );
 
     if (isOverlapping) {
       throw new Error(
-        `Roll number range ${start}-${end} overlaps with existing section`
+        `Roll number range ${start}-${end} overlaps with existing section`,
       );
     }
   }
@@ -87,7 +84,7 @@ export const getAllSectionsService = async (
   collegeId,
   page = 1,
   limit = 50,
-  filters = {}
+  filters = {},
 ) => {
   const skip = (page - 1) * limit;
 
@@ -98,7 +95,7 @@ export const getAllSectionsService = async (
     sections = await findSectionsByProgramAndYear(
       collegeId,
       filters.programId,
-      filters.year
+      filters.year,
     );
     total = sections.length;
     sections = sections.slice(skip, skip + limit);
@@ -156,7 +153,7 @@ export const getSectionByIdService = async (sectionId, collegeId) => {
 export const updateSectionService = async (
   sectionId,
   updateData,
-  collegeId
+  collegeId,
 ) => {
   const section = await findSectionById(sectionId);
 
@@ -182,12 +179,12 @@ export const updateSectionService = async (
       section.year,
       start,
       end,
-      sectionId // Exclude current section from overlap check
+      sectionId, // Exclude current section from overlap check
     );
 
     if (isOverlapping) {
       throw new Error(
-        `Roll number range ${start}-${end} overlaps with existing section`
+        `Roll number range ${start}-${end} overlaps with existing section`,
       );
     }
   }
@@ -250,7 +247,7 @@ export const splitSectionByRollRangesService = async (
   collegeId,
   programId,
   year,
-  sectionRanges
+  sectionRanges,
 ) => {
   // Validate college
   const college = await findCollegeById(collegeId);
@@ -259,12 +256,9 @@ export const splitSectionByRollRangesService = async (
   }
 
   // Validate program
-  const program = await findProgramById(programId);
+  const program = await findProgramById(programId, collegeId);
   if (!program) {
     throw new Error("Program not found");
-  }
-  if (program.collegeId.toString() !== collegeId.toString()) {
-    throw new Error("Program does not belong to your college");
   }
 
   // Validate ranges don't overlap
@@ -278,7 +272,7 @@ export const splitSectionByRollRangesService = async (
         (range2.start <= range1.end && range2.end >= range1.start)
       ) {
         throw new Error(
-          `Roll number ranges overlap: ${range1.name} (${range1.start}-${range1.end}) and ${range2.name} (${range2.start}-${range2.end})`
+          `Roll number ranges overlap: ${range1.name} (${range1.start}-${range1.end}) and ${range2.name} (${range2.start}-${range2.end})`,
         );
       }
     }
@@ -291,12 +285,12 @@ export const splitSectionByRollRangesService = async (
       programId,
       year,
       range.start,
-      range.end
+      range.end,
     );
 
     if (isOverlapping) {
       throw new Error(
-        `Roll number range ${range.start}-${range.end} overlaps with existing section`
+        `Roll number range ${range.start}-${range.end} overlaps with existing section`,
       );
     }
   }
@@ -381,7 +375,7 @@ export const splitSectionByRollRangesService = async (
 export const assignStudentToSectionService = async (
   collegeId,
   studentId,
-  newSectionId
+  newSectionId,
 ) => {
   // Validate student
   const student = await findStudentByIdDAL(studentId);
@@ -439,7 +433,7 @@ export const assignStudentToSectionService = async (
  */
 export const bulkAssignStudentsToSectionsService = async (
   collegeId,
-  assignments
+  assignments,
 ) => {
   const results = {
     successful: [],
@@ -451,7 +445,7 @@ export const bulkAssignStudentsToSectionsService = async (
       const result = await assignStudentToSectionService(
         collegeId,
         assignment.studentId,
-        assignment.sectionId
+        assignment.sectionId,
       );
       results.successful.push(result);
     } catch (error) {

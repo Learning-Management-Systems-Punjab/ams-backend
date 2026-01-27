@@ -66,7 +66,7 @@ export const getStudentByIdService = async (studentId) => {
 export const searchStudentsService = async (
   searchQuery,
   page = 1,
-  limit = 10
+  limit = 10,
 ) => {
   const skip = (page - 1) * limit;
 
@@ -103,7 +103,54 @@ export const getMyProfileService = async (userId) => {
     throw new Error("Student profile not found");
   }
 
-  return student;
+  // Parse name into firstName and lastName
+  const nameParts = student.name ? student.name.split(" ") : ["", ""];
+  const firstName = nameParts[0] || "";
+  const lastName = nameParts.slice(1).join(" ") || "";
+
+  // Format response to match frontend expectations
+  return {
+    _id: student._id,
+    rollNumber: student.rollNumber,
+    firstName,
+    lastName,
+    name: student.name,
+    email: student.email,
+    phone: student.contactNumber,
+    dateOfBirth: student.dateOfBirth,
+    gender: student.gender,
+    address: student.address,
+    admissionDate: student.enrollmentDate,
+    status: student.status?.toLowerCase() || "active",
+    section: student.sectionId
+      ? {
+          _id: student.sectionId._id,
+          name: student.sectionId.name,
+          academicYear: student.sectionId.year,
+          semester: student.sectionId.shift || "1st Shift",
+          capacity: student.sectionId.capacity,
+          program: student.programId
+            ? {
+                _id: student.programId._id,
+                name: student.programId.name,
+                code: student.programId.code,
+                duration: student.programId.duration,
+                level: student.programId.level,
+              }
+            : null,
+          college: student.collegeId
+            ? {
+                _id: student.collegeId._id,
+                name: student.collegeId.name,
+                code: student.collegeId.code,
+                city: student.collegeId.city,
+              }
+            : null,
+        }
+      : null,
+    createdAt: student.createdAt,
+    updatedAt: student.updatedAt,
+  };
 };
 
 /**
@@ -118,12 +165,12 @@ export const getMySectionDetailsService = async (userId) => {
     throw new Error("Student profile not found");
   }
 
-  if (!student.section) {
+  if (!student.sectionId) {
     throw new Error("You are not assigned to any section yet");
   }
 
-  const collegeId = student.college._id || student.college;
-  const sectionId = student.section._id || student.section;
+  const collegeId = student.collegeId._id || student.collegeId;
+  const sectionId = student.sectionId._id || student.sectionId;
 
   // Get section details
   const section = await findSectionById(sectionId, collegeId);
@@ -135,47 +182,72 @@ export const getMySectionDetailsService = async (userId) => {
   // Get teacher assignments for this section
   const assignments = await findAssignmentsBySection(collegeId, sectionId);
 
-  // Extract unique subject IDs
+  // Extract unique subject IDs from assignments
   const subjectIds = [
     ...new Set(
       assignments.map((a) =>
-        typeof a.subject === "object" ? a.subject._id : a.subject
-      )
+        a.subjectId?._id ? a.subjectId._id : a.subjectId,
+      ),
     ),
   ];
 
-  // Get subject details
-  const subjects = await findSubjectsByIds(subjectIds, collegeId);
+  // If no assignments found, fallback to section's subjects array
+  let subjects = [];
+  if (subjectIds.length > 0) {
+    subjects = await findSubjectsByIds(collegeId, subjectIds);
+  } else if (section.subjects && section.subjects.length > 0) {
+    // Fallback: use section's subjects array
+    subjects = await findSubjectsByIds(collegeId, section.subjects);
+  }
 
   // Map subjects with their teachers
   const subjectsWithTeachers = subjects.map((subject) => {
     const subjectAssignments = assignments.filter((a) => {
-      const subjectIdFromAssignment =
-        typeof a.subject === "object" ? a.subject._id : a.subject;
-      return subjectIdFromAssignment.toString() === subject._id.toString();
+      const subjectIdFromAssignment = a.subjectId?._id
+        ? a.subjectId._id
+        : a.subjectId;
+      return subjectIdFromAssignment?.toString() === subject._id.toString();
     });
 
     return {
       ...subject.toObject(),
       teachers: subjectAssignments.map((a) => ({
-        _id: a.teacher._id,
-        firstName: a.teacher.firstName,
-        lastName: a.teacher.lastName,
-        email: a.teacher.email,
+        _id: a.teacherId?._id || a.teacherId,
+        firstName: a.teacherId?.name?.split(" ")[0] || "",
+        lastName: a.teacherId?.name?.split(" ").slice(1).join(" ") || "",
+        name: a.teacherId?.name || "",
+        email: a.teacherId?.contactEmail || "",
+        phone: a.teacherId?.contactNumber || "",
+        specialization: a.teacherId?.designation || "",
       })),
     };
   });
 
   return {
-    section: {
-      _id: section._id,
-      name: section.name,
-      semester: section.semester,
-      year: section.year,
-      program: section.program,
-    },
+    _id: section._id,
+    name: section.name,
+    academicYear: section.year,
+    semester: section.shift || "1st Shift",
+    capacity: section.capacity,
+    enrolledStudents: section.currentStrength,
+    program: section.programId
+      ? {
+          _id: section.programId._id,
+          name: section.programId.name,
+          code: section.programId.code,
+          duration: section.programId.duration,
+          level: section.programId.level,
+        }
+      : null,
+    college: section.collegeId
+      ? {
+          _id: section.collegeId._id,
+          name: section.collegeId.name,
+          code: section.collegeId.code,
+          city: section.collegeId.city,
+        }
+      : null,
     subjects: subjectsWithTeachers,
-    totalSubjects: subjectsWithTeachers.length,
   };
 };
 
@@ -195,7 +267,7 @@ export const getMyAttendanceService = async (
   limit = 50,
   subjectId = null,
   startDate = null,
-  endDate = null
+  endDate = null,
 ) => {
   const student = await findStudentByUserId(userId);
 
@@ -203,7 +275,7 @@ export const getMyAttendanceService = async (
     throw new Error("Student profile not found");
   }
 
-  const collegeId = student.college._id || student.college;
+  const collegeId = student.collegeId._id || student.collegeId;
   const skip = (page - 1) * limit;
 
   // Build filters
@@ -218,18 +290,48 @@ export const getMyAttendanceService = async (
     filters.endDate = endDate;
   }
 
-  const [attendance, totalCount] = await Promise.all([
+  const [attendanceRaw, totalCount] = await Promise.all([
     findAttendanceByStudent(collegeId, student._id, filters, { skip, limit }),
     countAttendance(collegeId, { studentId: student._id, ...filters }),
   ]);
 
+  // Transform attendance records to match frontend expectations
+  const attendance = attendanceRaw.map((record) => ({
+    _id: record._id,
+    date: record.date,
+    period: record.period,
+    status: record.status,
+    remarks: record.remarks,
+    subject: record.subjectId
+      ? {
+          _id: record.subjectId._id,
+          name: record.subjectId.name,
+          code: record.subjectId.code,
+        }
+      : null,
+    section: record.sectionId
+      ? {
+          _id: record.sectionId._id,
+          name: record.sectionId.name,
+        }
+      : null,
+    markedBy: record.teacherId
+      ? {
+          _id: record.teacherId._id,
+          firstName: record.teacherId.name?.split(" ")[0] || "Unknown",
+          lastName: record.teacherId.name?.split(" ").slice(1).join(" ") || "",
+        }
+      : null,
+    createdAt: record.createdAt,
+  }));
+
   return {
-    attendance,
+    data: attendance,
     pagination: {
-      currentPage: page,
-      perPage: limit,
-      totalPages: Math.ceil(totalCount / limit),
-      totalItems: totalCount,
+      page,
+      limit,
+      pages: Math.ceil(totalCount / limit),
+      total: totalCount,
     },
   };
 };
@@ -246,7 +348,7 @@ export const getMyAttendanceStatsService = async (
   userId,
   subjectId = null,
   startDate = null,
-  endDate = null
+  endDate = null,
 ) => {
   const student = await findStudentByUserId(userId);
 
@@ -259,7 +361,7 @@ export const getMyAttendanceStatsService = async (
     student._id,
     subjectId,
     startDate,
-    endDate
+    endDate,
   );
 
   return stats;
@@ -277,7 +379,7 @@ export const getMyAttendanceBySubjectService = async (
   userId,
   subjectId,
   page = 1,
-  limit = 50
+  limit = 50,
 ) => {
   const student = await findStudentByUserId(userId);
 
@@ -285,7 +387,7 @@ export const getMyAttendanceBySubjectService = async (
     throw new Error("Student profile not found");
   }
 
-  const collegeId = student.college._id || student.college;
+  const collegeId = student.collegeId._id || student.collegeId;
   const skip = (page - 1) * limit;
 
   const filters = { subjectId };
@@ -318,7 +420,7 @@ export const getMyAttendanceSummaryService = async (userId) => {
     throw new Error("Student profile not found");
   }
 
-  if (!student.section) {
+  if (!student.sectionId) {
     return {
       message: "Not assigned to any section",
       totalSubjects: 0,
@@ -337,7 +439,7 @@ export const getMyAttendanceSummaryService = async (userId) => {
         student._id,
         subject._id,
         null,
-        null
+        null,
       );
 
       return {
@@ -349,7 +451,7 @@ export const getMyAttendanceSummaryService = async (userId) => {
         teachers: subject.teachers,
         ...stats,
       };
-    })
+    }),
   );
 
   // Calculate overall stats
@@ -372,7 +474,10 @@ export const getMyAttendanceSummaryService = async (userId) => {
       attendancePercentage: parseFloat(overallPercentage.toFixed(2)),
     },
     subjects: subjectStats,
-    section: sectionDetails.section,
+    section: {
+      _id: sectionDetails._id,
+      name: sectionDetails.name,
+    },
   };
 };
 
@@ -388,11 +493,11 @@ export const getMyClassmatesService = async (userId) => {
     throw new Error("Student profile not found");
   }
 
-  if (!student.section) {
+  if (!student.sectionId) {
     throw new Error("You are not assigned to any section yet");
   }
 
-  const sectionId = student.section._id || student.section;
+  const sectionId = student.sectionId._id || student.sectionId;
   const classmates = await findStudentsBySectionId(sectionId);
 
   // Filter out the current student

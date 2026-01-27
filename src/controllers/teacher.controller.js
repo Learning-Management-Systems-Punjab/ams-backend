@@ -7,7 +7,7 @@ import {
   getMySubjectsService,
   getStudentsInMySectionService,
   markAttendanceByTeacherService,
-  getMyAttendanceBySectionDateService,
+  getMyAttendanceRecordsService,
   getStudentAttendanceStatsForTeacherService,
   getSectionAttendanceStatsForTeacherService,
   generateAttendanceSheetForTeacherService,
@@ -70,7 +70,7 @@ export const searchTeachers = async (req, res, next) => {
       res,
       200,
       "Teacher search completed successfully",
-      result
+      result,
     );
   } catch (error) {
     next(error);
@@ -96,15 +96,23 @@ export const getMyAssignments = async (req, res, next) => {
       });
     }
 
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
+
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
+
     const { page = 1, limit = 50 } = req.query;
 
     const result = await getMyAssignmentsService(
       teacherId,
       collegeId,
       parseInt(page),
-      parseInt(limit)
+      parseInt(limit),
     );
 
     res.status(200).json({
@@ -124,15 +132,22 @@ export const getMyAssignments = async (req, res, next) => {
  */
 export const getMySections = async (req, res, next) => {
   try {
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
+
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
 
     const sections = await getMySectionsService(teacherId, collegeId);
 
     res.status(200).json({
       success: true,
       message: "Sections retrieved successfully",
-      data: sections,
+      data: { sections },
     });
   } catch (error) {
     next(error);
@@ -146,15 +161,22 @@ export const getMySections = async (req, res, next) => {
  */
 export const getMySubjects = async (req, res, next) => {
   try {
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
+
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
 
     const subjects = await getMySubjectsService(teacherId, collegeId);
 
     res.status(200).json({
       success: true,
       message: "Subjects retrieved successfully",
-      data: subjects,
+      data: { subjects },
     });
   } catch (error) {
     next(error);
@@ -176,14 +198,22 @@ export const getStudentsInMySection = async (req, res, next) => {
       });
     }
 
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
+
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
+
     const { sectionId } = req.params;
 
     const students = await getStudentsInMySectionService(
       teacherId,
       collegeId,
-      sectionId
+      sectionId,
     );
 
     res.status(200).json({
@@ -211,18 +241,28 @@ export const markAttendance = async (req, res, next) => {
       });
     }
 
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
+    const userId = req.user.userId;
+
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
+
     const { sectionId, subjectId, date, period, attendanceRecords } = req.body;
 
     const attendance = await markAttendanceByTeacherService(
       teacherId,
       collegeId,
+      userId,
       sectionId,
       subjectId,
       new Date(date),
-      period,
-      attendanceRecords
+      parseInt(period, 10), // Convert to integer
+      attendanceRecords,
     );
 
     res.status(201).json({
@@ -236,7 +276,7 @@ export const markAttendance = async (req, res, next) => {
 };
 
 /**
- * Get attendance for my class by date
+ * Get my attendance records with flexible filtering
  * @route GET /api/teacher/attendance
  * @access Private (Teacher only)
  */
@@ -250,17 +290,39 @@ export const getMyAttendanceByDate = async (req, res, next) => {
       });
     }
 
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
-    const { sectionId, subjectId, date, period } = req.query;
 
-    const attendance = await getMyAttendanceBySectionDateService(
-      teacherId,
-      collegeId,
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
+
+    const {
       sectionId,
       subjectId,
-      new Date(date),
-      parseInt(period)
+      date,
+      startDate,
+      endDate,
+      period,
+      page = 1,
+      limit = 50,
+    } = req.query;
+
+    const attendance = await getMyAttendanceRecordsService(
+      teacherId,
+      collegeId,
+      {
+        sectionId,
+        subjectId,
+        date: date ? new Date(date) : undefined,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        period: period ? parseInt(period) : undefined,
+      },
+      { page: parseInt(page), limit: parseInt(limit) },
     );
 
     res.status(200).json({
@@ -288,15 +350,23 @@ export const generateAttendanceSheet = async (req, res, next) => {
       });
     }
 
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
+
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
+
     const { sectionId, subjectId } = req.query;
 
     const sheet = await generateAttendanceSheetForTeacherService(
       teacherId,
       collegeId,
       sectionId,
-      subjectId
+      subjectId,
     );
 
     res.status(200).json({
@@ -324,8 +394,16 @@ export const getStudentAttendanceStats = async (req, res, next) => {
       });
     }
 
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
+
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
+
     const { studentId } = req.params;
     const { subjectId, startDate, endDate } = req.query;
 
@@ -335,7 +413,7 @@ export const getStudentAttendanceStats = async (req, res, next) => {
       studentId,
       subjectId,
       startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined
+      endDate ? new Date(endDate) : undefined,
     );
 
     res.status(200).json({
@@ -363,8 +441,16 @@ export const getSectionAttendanceStats = async (req, res, next) => {
       });
     }
 
-    const teacherId = req.user.userId;
+    const teacherId = req.user.teacherId;
     const collegeId = req.user.collegeId;
+
+    if (!teacherId || !collegeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher profile not found. Please contact administrator.",
+      });
+    }
+
     const { sectionId } = req.params;
     const { subjectId, startDate, endDate } = req.query;
 
@@ -374,7 +460,7 @@ export const getSectionAttendanceStats = async (req, res, next) => {
       sectionId,
       subjectId,
       startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined
+      endDate ? new Date(endDate) : undefined,
     );
 
     res.status(200).json({

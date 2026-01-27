@@ -8,6 +8,7 @@ import {
   bulkImportStudentsService,
   bulkImportStudentsFromCSVService,
   exportStudentsService,
+  moveStudentsToSectionService,
 } from "../services/college-admin-student.service.js";
 import { findCollegeByUserId } from "../dal/college.dal.js";
 
@@ -31,7 +32,7 @@ export const createStudent = async (req, res) => {
     const result = await createStudentService(
       studentData,
       college._id.toString(),
-      req.body.createLoginAccount || false
+      req.body.createLoginAccount || false,
     );
 
     return res.status(201).json({
@@ -71,12 +72,13 @@ export const getAllStudents = async (req, res) => {
     if (req.query.programId) filters.programId = req.query.programId;
     if (req.query.sectionId) filters.sectionId = req.query.sectionId;
     if (req.query.status) filters.status = req.query.status;
+    if (req.query.noSection === "true") filters.noSection = true;
 
     const result = await getAllStudentsService(
       college._id.toString(),
       page,
       limit,
-      filters
+      filters,
     );
 
     return res.status(200).json({
@@ -112,7 +114,7 @@ export const getStudentById = async (req, res) => {
 
     const student = await getStudentByIdService(
       studentId,
-      college._id.toString()
+      college._id.toString(),
     );
 
     return res.status(200).json({
@@ -151,7 +153,7 @@ export const updateStudent = async (req, res) => {
     const student = await updateStudentService(
       studentId,
       updateData,
-      college._id.toString()
+      college._id.toString(),
     );
 
     return res.status(200).json({
@@ -188,7 +190,7 @@ export const deleteStudent = async (req, res) => {
 
     const result = await deleteStudentService(
       studentId,
-      college._id.toString()
+      college._id.toString(),
     );
 
     return res.status(200).json({
@@ -236,7 +238,7 @@ export const searchStudents = async (req, res) => {
       college._id.toString(),
       query,
       page,
-      limit
+      limit,
     );
 
     return res.status(200).json({
@@ -287,7 +289,7 @@ export const bulkImportStudents = async (req, res) => {
     const result = await bulkImportStudentsService(
       students,
       college._id.toString(),
-      createLoginAccounts || false
+      createLoginAccounts || false,
     );
 
     return res.status(200).json({
@@ -327,7 +329,7 @@ export const exportStudents = async (req, res) => {
 
     const csvData = await exportStudentsService(
       college._id.toString(),
-      filters
+      filters,
     );
 
     return res.status(200).json({
@@ -378,7 +380,7 @@ export const bulkImportStudentsFromCSV = async (req, res) => {
     const result = await bulkImportStudentsFromCSVService(
       students,
       college._id.toString(),
-      createLoginAccounts || false
+      createLoginAccounts || false,
     );
 
     return res.status(200).json({
@@ -391,6 +393,43 @@ export const bulkImportStudentsFromCSV = async (req, res) => {
     return res.status(400).json({
       success: false,
       message: error.message || "Failed to import students from CSV",
+    });
+  }
+};
+
+/**
+ * Move students to another section
+ */
+export const moveStudentsToSection = async (req, res) => {
+  try {
+    const { studentIds, targetSectionId } = req.body;
+    const userId = req.user.userId;
+
+    // Find college for this user
+    const college = await findCollegeByUserId(userId);
+    if (!college) {
+      return res.status(404).json({
+        success: false,
+        message: "College not found for this admin",
+      });
+    }
+
+    const result = await moveStudentsToSectionService(
+      studentIds,
+      targetSectionId,
+      college._id.toString(),
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully moved ${result.updatedCount} student(s)`,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error in moveStudentsToSection:", error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to move students",
     });
   }
 };
